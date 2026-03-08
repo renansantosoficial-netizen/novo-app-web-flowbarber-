@@ -84,6 +84,10 @@ export default function App() {
   const [showMetaPopup, setShowMetaPopup] = useState(false);
   const [showSettingsPopup, setShowSettingsPopup] = useState(false);
   const [showFolgaPopup, setShowFolgaPopup] = useState(false);
+  const [showClientPopup, setShowClientPopup] = useState(false);
+  const [pendingService, setPendingService] = useState<Service | null>(null);
+  const [clientSearch, setClientSearch] = useState('');
+  const [newClient, setNewClient] = useState({ nome: '', tel: '' });
 
   // Persistence
   useEffect(() => {
@@ -159,19 +163,18 @@ export default function App() {
       {/* Header */}
       <header className="flex items-center justify-between">
         <div>
-          <h2 className="text-slate-400 font-bold text-sm uppercase tracking-widest">Dashboard</h2>
-          <h1 className="text-2xl font-black text-slate-900">Flow Barber</h1>
+          <h1 className="text-2xl font-black text-slate-100">Flow Barber</h1>
         </div>
         <div className="flex gap-2">
           <button 
             onClick={() => {}} 
-            className="p-3 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            className="p-3 rounded-2xl bg-slate-900 border border-white/10 text-slate-400 hover:bg-slate-800 transition-colors"
           >
             <Share2 size={20} />
           </button>
           <button 
             onClick={() => setIsLoggedIn(false)} 
-            className="p-3 rounded-2xl bg-white border border-slate-200 text-red-500 hover:bg-red-50 transition-colors"
+            className="p-3 rounded-2xl bg-slate-900 border border-white/10 text-red-400 hover:bg-red-900/20 transition-colors"
           >
             <LogOut size={20} />
           </button>
@@ -199,7 +202,7 @@ export default function App() {
             </span>
           </div>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Ganhos do Mês</p>
-          <h4 className="text-2xl font-black text-slate-900">{formatCurrency(monthlyStats.comissao)}</h4>
+          <h4 className="text-2xl font-black text-slate-100">{formatCurrency(monthlyStats.comissao)}</h4>
           <p className="text-slate-400 text-xs mt-1">
             sobre {formatCurrency(monthlyStats.faturamento)} faturados
           </p>
@@ -219,7 +222,7 @@ export default function App() {
           </div>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Meta Mensal</p>
           <div className="flex items-baseline gap-2">
-            <h4 className="text-2xl font-black text-slate-900">{formatCurrency(data.saldo)}</h4>
+            <h4 className="text-2xl font-black text-slate-100">{formatCurrency(data.saldo)}</h4>
             <span className="text-slate-300 font-bold text-sm">/ {formatCurrency(data.meta)}</span>
           </div>
           <div className="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -236,16 +239,16 @@ export default function App() {
       <Card delay={0.3} className="relative overflow-hidden">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
+            <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-xl">
               <Scissors size={20} />
             </div>
-            <div className="flex bg-slate-100 p-1 rounded-xl">
+            <div className="flex bg-slate-800 p-1 rounded-xl">
               <button
                 onClick={() => setActiveTab('servicos')}
                 className={`px-4 py-1.5 rounded-lg text-sm font-black transition-all ${
                   activeTab === 'servicos' 
-                    ? 'bg-white text-indigo-600 shadow-sm' 
-                    : 'text-slate-400 hover:text-slate-600'
+                    ? 'bg-slate-700 text-indigo-400 shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
                 Serviços
@@ -254,8 +257,8 @@ export default function App() {
                 onClick={() => setActiveTab('produtos')}
                 className={`px-4 py-1.5 rounded-lg text-sm font-black transition-all ${
                   activeTab === 'produtos' 
-                    ? 'bg-white text-indigo-600 shadow-sm' 
-                    : 'text-slate-400 hover:text-slate-600'
+                    ? 'bg-slate-700 text-indigo-400 shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
                 Produtos
@@ -264,7 +267,7 @@ export default function App() {
           </div>
           <button 
             onClick={() => setShowSettingsPopup(true)}
-            className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"
+            className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-500"
           >
             <Settings size={20} />
           </button>
@@ -298,11 +301,14 @@ export default function App() {
                     key={i}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => addRecord(s.valor, s.nome)}
-                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all group"
+                    onClick={() => {
+                      setPendingService(s);
+                      setShowClientPopup(true);
+                    }}
+                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-800/50 border border-white/5 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all group"
                   >
-                    <span className="text-sm font-bold text-slate-700 group-hover:text-indigo-700">{s.nome}</span>
-                    <span className="text-lg font-black text-indigo-600">{formatCurrency(s.valor)}</span>
+                    <span className="text-sm font-bold text-slate-300 group-hover:text-indigo-400">{s.nome}</span>
+                    <span className="text-lg font-black text-indigo-400">{formatCurrency(s.valor)}</span>
                   </motion.button>
                 ))}
               </div>
@@ -333,13 +339,13 @@ export default function App() {
       {/* Calendar & History */}
       <div className="space-y-4">
         <div className="flex items-center gap-3 px-2">
-          <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
+          <div className="p-2 bg-blue-500/20 text-blue-400 rounded-xl">
             <Calendar size={20} />
           </div>
-          <h3 className="text-lg font-black text-slate-900">Faturamento Diário</h3>
+          <h3 className="text-lg font-black text-slate-100">Faturamento Diário</h3>
           <button 
             onClick={() => setShowFolgaPopup(true)}
-            className="ml-auto text-xs font-bold text-blue-600 hover:underline"
+            className="ml-auto text-xs font-bold text-blue-400 hover:underline"
           >
             Configurar Folgas
           </button>
@@ -356,10 +362,10 @@ export default function App() {
       <Card delay={0.4}>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-slate-100 text-slate-600 rounded-xl">
+            <div className="p-2 bg-slate-800 text-slate-400 rounded-xl">
               <History size={20} />
             </div>
-            <h3 className="text-lg font-black text-slate-900">Histórico Recente</h3>
+            <h3 className="text-lg font-black text-slate-100">Histórico Recente</h3>
           </div>
           {selectedDate && (
             <button 
@@ -430,12 +436,12 @@ export default function App() {
           <Popup title="Editar Meta" onClose={() => setShowMetaPopup(false)}>
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs font-black text-slate-400 uppercase tracking-wider">Valor da Meta (R$)</label>
+                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Valor da Meta (R$)</label>
                 <input 
                   type="number" 
                   defaultValue={data.meta}
                   onBlur={(e) => setData(prev => ({ ...prev, meta: Number(e.target.value) }))}
-                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all font-bold text-lg"
+                  className="w-full p-4 rounded-2xl bg-slate-800/50 border border-white/10 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all font-bold text-lg text-slate-100"
                 />
               </div>
               <button onClick={() => setShowMetaPopup(false)} className="btn-primary w-full">Salvar Meta</button>
@@ -459,7 +465,7 @@ export default function App() {
                           newServicos[i].nome = e.target.value;
                           setData(prev => ({ ...prev, servicos: newServicos }));
                         }}
-                        className="flex-1 p-3 rounded-xl bg-slate-50 border border-slate-200 font-bold text-sm"
+                        className="flex-1 p-3 rounded-xl bg-slate-800/50 border border-white/10 font-bold text-sm text-slate-100"
                       />
                       <input 
                         type="number" 
@@ -469,11 +475,11 @@ export default function App() {
                           newServicos[i].valor = Number(e.target.value);
                           setData(prev => ({ ...prev, servicos: newServicos }));
                         }}
-                        className="w-24 p-3 rounded-xl bg-slate-50 border border-slate-200 font-bold text-sm"
+                        className="w-24 p-3 rounded-xl bg-slate-800/50 border border-white/10 font-bold text-sm text-slate-100"
                       />
                       <button 
                         onClick={() => setData(prev => ({ ...prev, servicos: prev.servicos.filter((_, idx) => idx !== i) }))}
-                        className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                        className="p-3 text-red-400 hover:bg-red-900/20 rounded-xl transition-colors"
                       >
                         <Trash2 size={18} />
                       </button>
@@ -557,6 +563,118 @@ export default function App() {
             </div>
           </Popup>
         )}
+
+        {showClientPopup && pendingService && (
+          <Popup title="Confirmar Serviço" onClose={() => {
+            setShowClientPopup(false);
+            setNewClient({ nome: '', tel: '' });
+            setClientSearch('');
+          }}>
+            <div className="space-y-6">
+              <div className="p-4 bg-slate-800/50 rounded-2xl border border-white/5 flex justify-between items-center">
+                <div>
+                  <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Serviço</p>
+                  <p className="font-black text-slate-100">{pendingService.nome}</p>
+                </div>
+                <p className="text-xl font-black text-indigo-400">{formatCurrency(pendingService.valor)}</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-wider ml-1">Buscar Cliente</label>
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                    <input 
+                      type="text" 
+                      placeholder="Nome ou telefone..."
+                      value={clientSearch}
+                      onChange={(e) => setClientSearch(e.target.value)}
+                      className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-800/50 border border-white/10 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold text-slate-100"
+                    />
+                  </div>
+                </div>
+
+                {clientSearch && (
+                  <div className="max-h-40 overflow-y-auto space-y-2 p-2 bg-slate-800/50 rounded-2xl border border-white/5">
+                    {data.contatos
+                      .filter(c => c.nome.toLowerCase().includes(clientSearch.toLowerCase()) || c.telefone.includes(clientSearch))
+                      .map(c => (
+                        <button
+                          key={c.id}
+                          onClick={() => {
+                            addRecord(pendingService.valor, pendingService.nome, { nome: c.nome, tel: c.telefone });
+                            setShowClientPopup(false);
+                            setClientSearch('');
+                          }}
+                          className="w-full text-left p-3 hover:bg-slate-800 rounded-xl transition-all flex justify-between items-center group"
+                        >
+                          <div>
+                            <p className="font-bold text-slate-100 group-hover:text-indigo-400">{c.nome}</p>
+                            <p className="text-xs text-slate-500">{c.telefone}</p>
+                          </div>
+                          <Plus size={16} className="text-slate-600" />
+                        </button>
+                      ))}
+                    {data.contatos.filter(c => c.nome.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
+                      <p className="text-center py-4 text-xs font-bold text-slate-500">Nenhum cliente encontrado.</p>
+                    )}
+                  </div>
+                )}
+
+                <div className="pt-4 border-t border-slate-100 space-y-4">
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-wider text-center">Ou cadastrar novo</p>
+                  <div className="grid grid-cols-1 gap-3">
+                    <input 
+                      type="text" 
+                      placeholder="Nome do novo cliente"
+                      value={newClient.nome}
+                      onChange={(e) => setNewClient(prev => ({ ...prev, nome: e.target.value }))}
+                      className="w-full p-4 rounded-2xl bg-slate-800/50 border border-white/10 focus:border-indigo-500 outline-none transition-all font-bold text-slate-100"
+                    />
+                    <input 
+                      type="tel" 
+                      placeholder="Telefone"
+                      value={newClient.tel}
+                      onChange={(e) => setNewClient(prev => ({ ...prev, tel: e.target.value }))}
+                      className="w-full p-4 rounded-2xl bg-slate-800/50 border border-white/10 focus:border-indigo-500 outline-none transition-all font-bold text-slate-100"
+                    />
+                  </div>
+                  <button 
+                    disabled={!newClient.nome}
+                    onClick={() => {
+                      const contact: Contact = {
+                        id: Date.now(),
+                        nome: newClient.nome,
+                        telefone: newClient.tel,
+                        criadoEm: Date.now(),
+                        atualizadoEm: Date.now()
+                      };
+                      setData(prev => ({
+                        ...prev,
+                        contatos: [contact, ...prev.contatos]
+                      }));
+                      addRecord(pendingService.valor, pendingService.nome, { nome: newClient.nome, tel: newClient.tel });
+                      setShowClientPopup(false);
+                      setNewClient({ nome: '', tel: '' });
+                    }}
+                    className="btn-primary w-full disabled:opacity-50 disabled:grayscale"
+                  >
+                    Registrar e Salvar Cliente
+                  </button>
+                  <button 
+                    onClick={() => {
+                      addRecord(pendingService.valor, pendingService.nome);
+                      setShowClientPopup(false);
+                    }}
+                    className="w-full py-3 text-slate-400 font-bold text-sm hover:text-slate-600 transition-colors"
+                  >
+                    Registrar sem cliente
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Popup>
+        )}
       </AnimatePresence>
     </div>
   );
@@ -590,17 +708,17 @@ const CalendarGrid = ({ data, selectedDate, onSelectDate }: { data: AppData, sel
   };
 
   return (
-    <Card className="p-4">
+    <Card className="p-4 bg-slate-900/50 border-white/5">
       <div className="flex items-center justify-between mb-4">
-        <h4 className="font-black text-slate-800 capitalize">{monthName} {currentYear}</h4>
+        <h4 className="font-black text-slate-100 capitalize">{monthName} {currentYear}</h4>
         <div className="flex gap-1">
-          <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><ChevronLeft size={18} /></button>
-          <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><ChevronRight size={18} /></button>
+          <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-400"><ChevronLeft size={18} /></button>
+          <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-400"><ChevronRight size={18} /></button>
         </div>
       </div>
       <div className="grid grid-cols-7 gap-1">
         {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, idx) => (
-          <div key={`${d}-${idx}`} className="text-center text-[10px] font-black text-slate-300 py-1">{d}</div>
+          <div key={`${d}-${idx}`} className="text-center text-[10px] font-black text-slate-500 py-1">{d}</div>
         ))}
         {Array.from({ length: daysInMonth }).map((_, i) => {
           const day = i + 1;
@@ -616,16 +734,16 @@ const CalendarGrid = ({ data, selectedDate, onSelectDate }: { data: AppData, sel
               onClick={() => onSelectDate(isSelected ? null : dateKey)}
               className={`
                 relative flex flex-col items-center justify-center p-2 rounded-xl border transition-all h-14
-                ${isSelected ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500/20' : 'border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-200'}
+                ${isSelected ? 'border-blue-500 bg-blue-500/10 ring-2 ring-blue-500/20' : 'border-white/5 bg-slate-800/50 hover:bg-slate-800 hover:border-white/10'}
                 ${folga?.periodo === 'completo' ? 'opacity-40 grayscale' : ''}
               `}
             >
-              <span className={`text-[10px] font-black ${isSelected ? 'text-blue-600' : 'text-slate-400'}`}>{day}</span>
-              <span className={`text-[10px] font-black mt-1 ${total > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
+              <span className={`text-[10px] font-black ${isSelected ? 'text-blue-400' : 'text-slate-500'}`}>{day}</span>
+              <span className={`text-[10px] font-black mt-1 ${total > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
                 {total > 0 ? formatCurrency(total).replace('R$', '') : '—'}
               </span>
               {folga && (
-                <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${folga.periodo === 'completo' ? 'bg-red-400' : 'bg-amber-400'}`} />
+                <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${folga.periodo === 'completo' ? 'bg-red-500' : 'bg-amber-500'}`} />
               )}
             </button>
           );
@@ -651,8 +769,8 @@ const Popup = ({ title, children, onClose }: { title: string, children: React.Re
       onClick={e => e.stopPropagation()}
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-black text-slate-900">{title}</h3>
-        <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400">
+        <h3 className="text-xl font-black text-slate-100">{title}</h3>
+        <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-500">
           <Plus className="rotate-45" size={24} />
         </button>
       </div>
@@ -662,60 +780,95 @@ const Popup = ({ title, children, onClose }: { title: string, children: React.Re
 );
 
 const Login = ({ onLogin }: { onLogin: () => void }) => {
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const savedAuth = localStorage.getItem('flowBarberAuth');
+  
+  const handleAuth = () => {
+    if (!username || !password) {
+      setError('Preencha todos os campos.');
+      return;
+    }
 
-  const handleLogin = () => {
-    if (!savedAuth) {
-      if (password.length < 4) {
-        setError('Senha deve ter pelo menos 4 dígitos.');
+    const users = JSON.parse(localStorage.getItem('flowBarberUsers') || '{}');
+
+    if (isSignUp) {
+      if (users[username]) {
+        setError('Usuário já existe.');
         return;
       }
-      localStorage.setItem('flowBarberAuth', password);
+      users[username] = password;
+      localStorage.setItem('flowBarberUsers', JSON.stringify(users));
+      localStorage.setItem('flowBarberCurrentUser', username);
       onLogin();
     } else {
-      if (password === savedAuth) {
+      if (users[username] === password) {
+        localStorage.setItem('flowBarberCurrentUser', username);
         onLogin();
       } else {
-        setError('Senha incorreta.');
+        setError('Usuário ou senha incorretos.');
       }
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-slate-100">
-      <Card className="w-full max-w-sm space-y-8 p-10">
-        <div className="text-center space-y-2">
-          <div className="inline-flex p-4 bg-emerald-100 text-emerald-600 rounded-3xl mb-4">
-            <Scissors size={32} />
+    <div className="min-h-screen flex items-center justify-center p-4 bg-white">
+      <div className="w-full max-w-[350px] space-y-4">
+        <div className="bg-white border border-slate-200 p-10 space-y-8 rounded-sm">
+          <div className="text-center">
+            <h1 className="text-4xl font-display italic font-black text-slate-900 tracking-tight mb-8">Flow Barber</h1>
           </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Flow Barber</h1>
-          <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">
-            {savedAuth ? 'Bem-vindo de volta' : 'Configure seu acesso'}
-          </p>
-        </div>
 
-        <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-wider ml-1">Senha de Acesso</label>
+            <input 
+              type="text" 
+              placeholder="Nome de usuário"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full p-3 rounded-sm bg-slate-50 border border-slate-200 focus:border-slate-400 outline-none transition-all text-sm"
+            />
             <input 
               type="password" 
+              placeholder="Senha"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••"
-              className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all text-center text-2xl tracking-[0.5em] font-black"
+              className="w-full p-3 rounded-sm bg-slate-50 border border-slate-200 focus:border-slate-400 outline-none transition-all text-sm"
             />
+            
+            <button 
+              onClick={handleAuth}
+              className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 rounded-md transition-all text-sm mt-4"
+            >
+              {isSignUp ? 'Cadastre-se' : 'Entrar'}
+            </button>
+
+            {error && <p className="text-red-500 text-[10px] font-bold text-center mt-2">{error}</p>}
           </div>
-          {error && <p className="text-red-500 text-xs font-bold text-center">{error}</p>}
-          <button 
-            onClick={handleLogin}
-            className="btn-primary w-full py-4 text-lg"
-          >
-            {savedAuth ? 'Entrar no Sistema' : 'Criar Senha'}
-          </button>
+
+          <div className="relative flex items-center py-4">
+            <div className="flex-grow border-t border-slate-200"></div>
+            <span className="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase">ou</span>
+            <div className="flex-grow border-t border-slate-200"></div>
+          </div>
+
+          <div className="text-center">
+            <button className="text-indigo-900 font-bold text-sm">Entrar com o Facebook</button>
+          </div>
         </div>
-      </Card>
+
+        <div className="bg-white border border-slate-200 p-6 text-center rounded-sm">
+          <p className="text-sm text-slate-900">
+            {isSignUp ? 'Já tem uma conta?' : 'Não tem uma conta?'} {' '}
+            <button 
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-sky-500 font-bold"
+            >
+              {isSignUp ? 'Conecte-se' : 'Cadastre-se'}
+            </button>
+          </p>
+        </div>
+      </div>
     </div>
   );
 };
