@@ -3,12 +3,18 @@ export interface Service {
   valor: number;
 }
 
+export interface Product {
+  nome: string;
+  valor: number;
+}
+
 export interface Contact {
   id: number;
   nome: string;
   telefone: string;
   criadoEm: number;
   atualizadoEm: number;
+  recorrenciaPadrao?: number; // em dias
 }
 
 export interface HistoryRecord {
@@ -19,6 +25,8 @@ export interface HistoryRecord {
   data: string; // ISO string
   clienteNome?: string | null;
   clienteTelefone?: string | null;
+  recorrencia?: number; // em dias
+  categoria?: 'servico' | 'produto';
 }
 
 export interface DayOffConfig {
@@ -32,7 +40,9 @@ export interface AppData {
   historico: HistoryRecord[];
   contatos: Contact[];
   servicos: Service[];
+  produtos: Product[];
   percentualGanho: number;
+  percentualProdutos: number;
   diasFolga: DayOffConfig[];
 }
 
@@ -47,6 +57,12 @@ export const DEFAULT_DATA: AppData = {
     { nome: "Corte + Barba", valor: 25 },
     { nome: "Sobrancelha", valor: 8 },
   ],
+  produtos: [
+    { nome: "Pomada", valor: 35 },
+    { nome: "Óleo de Barba", valor: 45 },
+    { nome: "Shampoo", valor: 30 },
+  ],
   percentualGanho: 50,
+  percentualProdutos: 10,
   diasFolga: [],
 };

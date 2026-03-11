@@ -8,15 +8,25 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-50 antialiased;
+    @apply bg-slate-950 text-slate-50 antialiased transition-colors duration-300;
+    background: radial-gradient(circle at 0% 0%, rgba(16, 185, 129, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.05) 0%, transparent 50%);
+    min-height: 100vh;
+  }
+
+  body.light-mode {
+    @apply bg-slate-50 text-slate-900;
     background: radial-gradient(circle at 0% 0%, rgba(16, 185, 129, 0.1) 0%, transparent 50%),
                 radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
-    min-height: 100vh;
   }
 }
 
 .glass-card {
-  @apply bg-slate-900/50 backdrop-blur-xl border border-white/5 shadow-2xl shadow-black/50 rounded-3xl;
+  @apply bg-white/5 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-black/20 rounded-3xl;
+}
+
+.light-mode .glass-card {
+  @apply bg-white/40 backdrop-blur-2xl border border-black/5 shadow-xl shadow-black/5;
 }
 
 .neo-inset {
@@ -29,4 +39,12 @@
 
 .btn-secondary {
   @apply bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-3 px-6 rounded-2xl border border-white/5 transition-all active:scale-95 shadow-sm;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
