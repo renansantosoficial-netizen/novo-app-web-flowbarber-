@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -26,12 +28,17 @@ import {
   RefreshCw,
   LayoutGrid,
   ChartColumn,
+  AlertCircle,
   Moon,
   Sun,
   Briefcase,
   Coffee,
   Package,
   Sparkles,
+  Pencil,
+  Download,
+  X,
+  FileText,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon
 } from 'lucide-react';
@@ -45,15 +52,20 @@ import {
   ResponsiveContainer, 
   AreaChart, 
   Area,
-  Cell
+  Cell,
+  PieChart,
+  Pie
 } from 'recharts';
+import { Card } from './components/Card';
+import { MetricsSection } from './components/MetricsSection';
+import { MetricsDrawer } from './components/MetricsDrawer';
 import { AppData, DEFAULT_DATA, HistoryRecord, Contact, Service, DayOffConfig } from './types';
 import { getAIInsights, getMarketTrends } from './services/geminiService';
 import Cropper from 'react-easy-crop';
 
 // --- Utils ---
 const formatCurrency = (v: number) => 
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v);
 
 const getLocalISO = (date: Date) => {
   const offset = date.getTimezoneOffset();
@@ -63,16 +75,7 @@ const getLocalISO = (date: Date) => {
 
 // --- Components ---
 
-const Card = ({ children, className = "", delay = 0 }: { children: React.ReactNode, className?: string, delay?: number }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.5, delay }}
-    className={`glass-card p-5 ${className}`}
-  >
-    {children}
-  </motion.div>
-);
+
 
 const AnimatedTitle = ({ text }: { text: string }) => {
   const characters = Array.from(text);
@@ -96,6 +99,9 @@ const AnimatedTitle = ({ text }: { text: string }) => {
     </div>
   );
 };
+
+import { ReportModal } from './components/ReportModal';
+import { ServiceModal } from './components/ServiceModal';
 
 export default function App() {
   const [data, setData] = useState<AppData>(() => {
@@ -123,10 +129,68 @@ export default function App() {
     }
   });
 
+  useEffect(() => {
+    localStorage.setItem('flowBarberData', JSON.stringify(data));
+  }, [data]);
+
+  const exportToCSV = (data: any[], filename: string, isHistory: boolean = false) => {
+    if (data.length === 0) return;
+    
+    let csvContent = "";
+    if (isHistory) {
+      const headers = ['Data', 'Tipo', 'Descricao', 'Valor', 'Categoria'].join(',');
+      const rows = data.map(r => [
+        `"${new Date(r.data).toLocaleString('pt-BR')}"`,
+        `"${r.tipo}"`,
+        `"${r.descricao}"`,
+        `"${r.valor}"`,
+        `"${r.categoria || ''}"`
+      ].join(','));
+      csvContent = [headers, ...rows].join('\n');
+    } else {
+      const headers = Object.keys(data[0]).join(',');
+      const rows = data.map(obj => Object.values(obj).map(v => `"${v}"`).join(','));
+      csvContent = [headers, ...rows].join('\n');
+    }
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    doc.text("Relatório de Dados", 10, 10);
+    
+    // Add summary
+    doc.text(`Saldo: € ${totalBalance.toFixed(2)}`, 10, 20);
+    doc.text(`Meta: € ${data.meta.toFixed(2)}`, 10, 30);
+    
+    // Add tables
+    (doc as any).autoTable({
+      head: [['Nome', 'Valor']],
+      body: data.servicos.map(s => [s.nome, `€ ${s.valor.toFixed(2)}`]),
+      startY: 40,
+    });
+    
+    doc.save('relatorio.pdf');
+  };
+
   const [isLoggedIn, setIsLoggedIn] = useState(() => sessionStorage.getItem('flowBarberLoggedIn') === '1');
   const [darkMode, setDarkMode] = useState(true);
   const [mainTab, setMainTab] = useState<'inicio' | 'agenda' | 'analytics' | 'historico' | 'config'>('inicio');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState("");
+  const [showMetricsDrawer, setShowMetricsDrawer] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
 
   // Dark Mode System Sync
   useEffect(() => {
@@ -161,12 +225,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'servicos' | 'produtos'>('servicos');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showMetaPopup, setShowMetaPopup] = useState(false);
+  const [showPerformancePanel, setShowPerformancePanel] = useState(false);
   const [showSettingsPopup, setShowSettingsPopup] = useState(false);
   const [showFolgaPopup, setShowFolgaPopup] = useState(false);
   const [showClientPopup, setShowClientPopup] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   const [pendingService, setPendingService] = useState<{ nome: string, valor: number, categoria: 'servico' | 'produto' } | null>(null);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [editingRecord, setEditingRecord] = useState<HistoryRecord | null>(null);
   const [showPhotoAdjustment, setShowPhotoAdjustment] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -218,10 +285,44 @@ export default function App() {
     };
   }, [data]);
 
+  const dailyStats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayRecords = data.historico.filter(r => r.data.startsWith(today));
+
+    const faturamentoServicos = todayRecords
+      .filter(r => r.tipo === 'entrada' && (r.categoria === 'servico' || !r.categoria))
+      .reduce((acc, r) => acc + r.valor, 0);
+
+    const faturamentoProdutos = todayRecords
+      .filter(r => r.tipo === 'entrada' && r.categoria === 'produto')
+      .reduce((acc, r) => acc + r.valor, 0);
+
+    const comissaoServicos = (faturamentoServicos * data.percentualGanho) / 100;
+    const comissaoProdutos = (faturamentoProdutos * (data.percentualProdutos || 0)) / 100;
+
+    return { 
+      faturamento: faturamentoServicos + faturamentoProdutos, 
+      comissao: comissaoServicos + comissaoProdutos 
+    };
+  }, [data]);
+
   // Fetch AI Insights & Market Trends
   useEffect(() => {
-    if (isLoggedIn && mainTab === 'inicio') {
+    if (isLoggedIn && mainTab === 'inicio' && aiInsights.length === 0 && marketTrends.length === 0) {
       const fetchData = async () => {
+        const cachedAI = localStorage.getItem('flowBarberAIInsights');
+        const cachedTrends = localStorage.getItem('flowBarberMarketTrends');
+        const cacheTime = localStorage.getItem('flowBarberCacheTime');
+        
+        const now = new Date().getTime();
+        const isCacheValid = cacheTime && (now - parseInt(cacheTime)) < 24 * 60 * 60 * 1000; // 24 hours
+
+        if (isCacheValid && cachedAI && cachedTrends) {
+          setAiInsights(JSON.parse(cachedAI));
+          setMarketTrends(JSON.parse(cachedTrends));
+          return;
+        }
+
         setLoadingAI(true);
         setLoadingTrends(true);
         
@@ -239,17 +340,21 @@ export default function App() {
 
         if (insightsResult.insights) {
           setAiInsights(insightsResult.insights);
+          localStorage.setItem('flowBarberAIInsights', JSON.stringify(insightsResult.insights));
         }
         if (trendsResult.trends) {
           setMarketTrends(trendsResult.trends);
+          localStorage.setItem('flowBarberMarketTrends', JSON.stringify(trendsResult.trends));
         }
+        
+        localStorage.setItem('flowBarberCacheTime', now.toString());
         
         setLoadingAI(false);
         setLoadingTrends(false);
       };
       fetchData();
     }
-  }, [isLoggedIn, mainTab, data.saldo, data.meta, monthlyStats.faturamento]);
+  }, [isLoggedIn, mainTab, data.saldo, data.meta, monthlyStats.faturamento, aiInsights.length, marketTrends.length]);
 
   const chartData = useMemo(() => {
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -304,13 +409,41 @@ export default function App() {
       return { name: month, faturamento, meta: data.meta };
     });
 
-    return { monthlyData, yearlyData, dailyData, goalsData };
+    const categoryData = {
+      totalServicos: data.historico.filter(r => r.tipo === 'entrada' && r.categoria === 'servico').reduce((acc, r) => acc + r.valor, 0),
+      totalProdutos: data.historico.filter(r => r.tipo === 'entrada' && r.categoria === 'produto').reduce((acc, r) => acc + r.valor, 0),
+      total: 0,
+      percentServicos: 0,
+      percentProdutos: 0
+    };
+    categoryData.total = categoryData.totalServicos + categoryData.totalProdutos;
+    categoryData.percentServicos = categoryData.total > 0 ? (categoryData.totalServicos / categoryData.total) * 100 : 0;
+    categoryData.percentProdutos = categoryData.total > 0 ? (categoryData.totalProdutos / categoryData.total) * 100 : 0;
+
+    return { monthlyData, yearlyData, dailyData, goalsData, categoryData };
   }, [data.historico, data.meta]);
+
+  const totalBalance = useMemo(() => {
+    return data.historico.reduce((acc, r) => {
+      return r.tipo === 'entrada' ? acc + r.valor : acc - r.valor;
+    }, 0);
+  }, [data.historico]);
+
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const metaProgress = useMemo(() => {
     if (data.meta <= 0) return 0;
-    return Math.min(100, (data.saldo / data.meta) * 100);
-  }, [data.saldo, data.meta]);
+    return Math.min(100, (totalBalance / data.meta) * 100);
+  }, [totalBalance, data.meta]);
+
+  const taskProgress = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const servicesToday = data.historico.filter(r => 
+      r.data.startsWith(today) && r.tipo === 'entrada' && r.categoria === 'servico'
+    ).length;
+    const dailyGoal = 5; // Meta diária de 5 serviços
+    return Math.min(100, (servicesToday / dailyGoal) * 100);
+  }, [data.historico]);
 
   const upcomingReturns = useMemo(() => {
     const now = new Date();
@@ -341,12 +474,17 @@ export default function App() {
 
   // Actions
   const addRecord = (valor: number, descricao: string, cliente?: { nome: string, tel: string }, recorrencia?: number, categoria: 'servico' | 'produto' = 'servico') => {
+    if (valor <= 0) {
+      setErrorToast("O valor deve ser maior que zero.");
+      setTimeout(() => setErrorToast(null), 3000);
+      return;
+    }
     const now = new Date();
     const timeStr = now.toISOString().split('T')[1];
     const dateStr = selectedDate ? `${selectedDate}T${timeStr}` : now.toISOString();
 
     const newRecord: HistoryRecord = {
-      id: Date.now(),
+      id: Date.now() + Math.random(),
       descricao,
       valor,
       tipo: 'entrada',
@@ -436,6 +574,48 @@ export default function App() {
     }
   };
 
+  const addCatalogService = async () => {
+    setIsSyncing(true);
+    try {
+      // Simulação de chamada de API para o sistema Salto
+      await new Promise((resolve, reject) => {
+        setTimeout(() => Math.random() > 0.1 ? resolve(true) : reject(new Error('API Error')), 600);
+      });
+      
+      // Atualização do estado após sucesso (Gatilho de re-renderização)
+      setData(prev => ({ ...prev, servicos: [...prev.servicos, { nome: 'Novo Serviço', valor: 0 }] }));
+      
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 2000);
+    } catch (error) {
+      setErrorToast("Erro de sincronização ao adicionar serviço.");
+      setTimeout(() => setErrorToast(null), 3000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const deleteCatalogService = async (index: number) => {
+    setIsSyncing(true);
+    try {
+      // Simulação de chamada de API para o sistema Salto
+      await new Promise((resolve, reject) => {
+        setTimeout(() => Math.random() > 0.1 ? resolve(true) : reject(new Error('API Error')), 600);
+      });
+      
+      // Atualização do estado após sucesso (Gatilho de re-renderização)
+      setData(prev => ({ ...prev, servicos: prev.servicos.filter((_, i) => i !== index) }));
+      
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 2000);
+    } catch (error) {
+      setErrorToast("Erro de sincronização ao excluir serviço.");
+      setTimeout(() => setErrorToast(null), 3000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const deleteRecord = (id: number) => {
     const record = data.historico.find(r => r.id === id);
     if (!record) return;
@@ -447,12 +627,53 @@ export default function App() {
     }));
   };
 
+  const updateRecord = (updatedRecord: HistoryRecord) => {
+    const oldRecord = data.historico.find(r => r.id === updatedRecord.id);
+    if (!oldRecord) return;
+
+    setData(prev => {
+      // Revert old record impact on balance
+      let newSaldo = oldRecord.tipo === 'entrada' ? prev.saldo - oldRecord.valor : prev.saldo + oldRecord.valor;
+      // Apply new record impact on balance
+      newSaldo = updatedRecord.tipo === 'entrada' ? newSaldo + updatedRecord.valor : newSaldo - updatedRecord.valor;
+
+      return {
+        ...prev,
+        saldo: newSaldo,
+        historico: prev.historico.map(r => r.id === updatedRecord.id ? updatedRecord : r)
+      };
+    });
+    setEditingRecord(null);
+  };
+
   if (!isLoggedIn) {
     return <Login onLogin={() => setIsLoggedIn(true)} />;
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-500 relative overflow-hidden ${darkMode ? 'bg-slate-50 text-slate-900' : 'bg-slate-50 text-slate-900'}`}>
+    <div className={`min-h-screen transition-colors duration-500 relative overflow-hidden ${darkMode ? 'bg-slate-950 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
+      {isServiceModalOpen && (
+        <ServiceModal
+          isOpen={isServiceModalOpen}
+          onClose={() => setIsServiceModalOpen(false)}
+          onSave={(newService) => {
+            setData(prev => ({
+              ...prev,
+              servicos: [...prev.servicos, newService],
+              historico: [...prev.historico, {
+                id: Date.now() + Math.random(),
+                data: selectedDate ? `${selectedDate}T12:00:00Z` : new Date().toISOString(),
+                tipo: 'entrada',
+                descricao: newService.nome,
+                valor: newService.valor,
+                categoria: 'serviço'
+              }]
+            }));
+            setShowSuccessToast(true);
+            setTimeout(() => setShowSuccessToast(false), 2000);
+          }}
+        />
+      )}
       {/* Elementos Atmosféricos de Fundo */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-[-15%] left-[-10%] w-[50%] h-[50%] bg-emerald-500/10 blur-[140px] rounded-full animate-pulse" />
@@ -460,7 +681,7 @@ export default function App() {
         <div className="absolute top-[30%] right-[-5%] w-[30%] h-[30%] bg-cyan-400/5 blur-[100px] rounded-full" />
       </div>
 
-      <div className="max-w-2xl mx-auto px-6 pt-8 pb-32 space-y-6 relative z-10">
+      <div className="max-w-2xl mx-auto px-4 pt-4 pb-20 space-y-3 relative z-10">
         
         {/* Header Unificado */}
         <header className="flex items-center justify-between mb-6">
@@ -478,7 +699,7 @@ export default function App() {
               <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full shadow-sm" />
             </div>
             <div className="text-left">
-              <h1 className="text-base font-black tracking-tight leading-tight text-slate-900">Flow Barber</h1>
+              <h1 className="text-base font-black tracking-tight leading-tight text-slate-900">{data.barberName || "Flow Barber"}</h1>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Premium Studio</p>
             </div>
           </button>
@@ -491,26 +712,53 @@ export default function App() {
                 exit={{ opacity: 0, x: -20 }}
                 className="absolute top-20 left-6 z-[60] bg-white rounded-[32px] shadow-[0_20px_60px_rgba(0,0,0,0.12)] border border-slate-100 p-6 w-80 space-y-6"
               >
-                <div className="border-b border-slate-50 pb-4">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Painel de Controle</p>
+                <div className="border-b border-slate-50 pb-4 flex flex-col gap-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Perfil & Configurações</p>
+                  
+                  <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+                    {isEditingName ? (
+                      <>
+                        <input 
+                          type="text" 
+                          value={tempName}
+                          onChange={(e) => setTempName(e.target.value)}
+                          className="flex-1 bg-transparent text-sm font-black text-slate-900 outline-none px-2"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              setData(prev => ({ ...prev, barberName: tempName }));
+                              setIsEditingName(false);
+                            }
+                          }}
+                        />
+                        <button 
+                          onClick={() => {
+                            setData(prev => ({ ...prev, barberName: tempName }));
+                            setIsEditingName(false);
+                          }}
+                          className="p-2 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-all"
+                        >
+                          <CheckCircle2 size={16} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm font-black text-slate-900 px-2 truncate">{data.barberName || "Flow Barber"}</span>
+                        <button 
+                          onClick={() => {
+                            setTempName(data.barberName || "Flow Barber");
+                            setIsEditingName(true);
+                          }}
+                          className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissão Serviços</h4>
-                      <span className="text-sm font-black text-emerald-500">{data.percentualGanho}%</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="100" 
-                      value={data.percentualGanho}
-                      onChange={(e) => setData(prev => ({ ...prev, percentualGanho: Number(e.target.value) }))}
-                      className="w-full accent-emerald-500 h-1 bg-slate-100 rounded-full appearance-none cursor-pointer"
-                    />
-                  </div>
-
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissão Produtos</h4>
@@ -525,9 +773,34 @@ export default function App() {
                       className="w-full accent-cyan-500 h-1 bg-slate-100 rounded-full appearance-none cursor-pointer"
                     />
                   </div>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissão Serviços</h4>
+                      <span className="text-sm font-black text-emerald-500">{data.percentualGanho}%</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="100" 
+                      value={data.percentualGanho}
+                      onChange={(e) => setData(prev => ({ ...prev, percentualGanho: Number(e.target.value) }))}
+                      className="w-full accent-emerald-500 h-1 bg-slate-100 rounded-full appearance-none cursor-pointer"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2">
+                  <button 
+                    onClick={() => {
+                      setShowReportModal(true);
+                      setShowProfileMenu(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 bg-indigo-50 hover:bg-indigo-100 rounded-2xl transition-all text-indigo-600 font-bold text-sm border border-indigo-100"
+                  >
+                    <div className="p-2 bg-indigo-500 text-white rounded-xl"><ChartColumn size={16} /></div>
+                    Análise de Faturação e Relatórios
+                  </button>
                   <button 
                     onClick={() => {
                       fileInputRef.current?.click();
@@ -579,138 +852,31 @@ export default function App() {
           {mainTab === 'inicio' && (
             <motion.div
               key="inicio"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
               className="space-y-6"
             >
               {/* Saldo Principal - Reduzido */}
-              <Card className="bg-white border-none shadow-[0_20px_60px_rgba(0,0,0,0.04)] rounded-[32px] p-8 text-slate-900 relative overflow-hidden group">
+              <Card className="bg-white border-none shadow-[0_20px_60px_rgba(0,0,0,0.04)] rounded-[24px] p-4 text-slate-900 relative overflow-hidden group">
                 <div className="relative z-10">
                   <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] mb-4">Saldo Disponível</p>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-black text-slate-200">R$</span>
+                    <span className="text-2xl font-black text-slate-200">€</span>
                     <h3 className="text-6xl font-black tracking-tighter text-slate-900 leading-none select-none">
-                      {Math.floor(data.saldo)}
-                      <span className="text-2xl opacity-40">,{(data.saldo % 1).toFixed(2).split('.')[1]}</span>
+                      {Math.floor(totalBalance)}
+                      <span className="text-2xl opacity-40">,{(totalBalance % 1).toFixed(2).split('.')[1]}</span>
                     </h3>
                   </div>
                 </div>
-                <div className="absolute top-1/2 -right-6 -translate-y-1/2 opacity-[0.02] rotate-12 group-hover:rotate-0 transition-transform duration-700">
-                  <Scissors size={140} strokeWidth={1} />
+                <div className="absolute top-1/2 -right-6 -translate-y-1/2 opacity-[0.1] rotate-12 group-hover:rotate-0 transition-transform duration-700">
+                  <Scissors size={140} strokeWidth={1} className="text-emerald-500" />
                 </div>
               </Card>
 
-              {/* Ganhos e Meta - Compactos */}
-              <div className="grid grid-cols-2 gap-4">
-                <Card className="bg-white border-none shadow-[0_10px_30px_rgba(0,0,0,0.03)] rounded-[24px] p-5">
-                  <p className="text-slate-400 font-black text-[9px] uppercase tracking-widest mb-2">Ganhos</p>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xs font-black text-slate-200">R$</span>
-                    <h4 className="text-2xl font-black text-slate-800 tracking-tight">{monthlyStats.comissao.toLocaleString('pt-BR')}</h4>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">{data.percentualGanho}% COMISSÃO</span>
-                  </div>
-                </Card>
-
-                <Card className="bg-white border-none shadow-[0_10px_30px_rgba(0,0,0,0.03)] rounded-[24px] p-5">
-                  <p className="text-slate-400 font-black text-[9px] uppercase tracking-widest mb-2">Meta</p>
-                  <div className="flex items-start gap-1">
-                    <h4 className="text-2xl font-black text-slate-900 tracking-tight leading-none">{formatCurrency(data.saldo).split(',')[0]}</h4>
-                    <span className="text-slate-300 font-black text-[10px] leading-none mt-0.5">/ {formatCurrency(data.meta).split(',')[0]}</span>
-                  </div>
-                  <div className="mt-3 h-1 bg-slate-100 rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${metaProgress}%` }}
-                      className="h-full bg-amber-500 rounded-full"
-                    />
-                  </div>
-                </Card>
-              </div>
-
-              {/* AI Insights & Market Trends */}
-              <div className="grid grid-cols-1 gap-6">
-                <Card className="bg-gradient-to-br from-[#8b5cf6]/5 to-emerald-500/5 border border-[#8b5cf6]/10 rounded-[32px] p-8 relative overflow-hidden">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 bg-[#8b5cf6]/10 text-[#8b5cf6] rounded-xl">
-                      <Sparkles size={20} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900 tracking-tight">AI Insights</h3>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Gemini Intelligence</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {loadingAI ? (
-                      [1, 2, 3].map(i => (
-                        <div key={i} className="space-y-3 animate-pulse">
-                          <div className="h-4 w-24 bg-slate-200 rounded-full" />
-                          <div className="h-3 w-full bg-slate-100 rounded-full" />
-                        </div>
-                      ))
-                    ) : aiInsights.length > 0 ? (
-                      aiInsights.map((insight, i) => (
-                        <div key={i} className="space-y-2">
-                          <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{insight.title}</h4>
-                          <p className="text-xs text-slate-500 leading-relaxed">{insight.description}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">Nenhum insight disponível no momento.</p>
-                    )}
-                  </div>
-                </Card>
-
-                {/* Market Trends - Google Search Grounding */}
-                <Card className="bg-gradient-to-br from-cyan-500/5 to-indigo-500/5 border border-cyan-500/10 rounded-[32px] p-8 relative overflow-hidden">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 bg-cyan-500/10 text-cyan-500 rounded-xl">
-                      <Search size={20} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900 tracking-tight">Tendências do Mercado</h3>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Google Search Grounding</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {loadingTrends ? (
-                      [1, 2, 3].map(i => (
-                        <div key={i} className="space-y-3 animate-pulse">
-                          <div className="h-4 w-24 bg-slate-200 rounded-full" />
-                          <div className="h-3 w-full bg-slate-100 rounded-full" />
-                        </div>
-                      ))
-                    ) : marketTrends.length > 0 ? (
-                      marketTrends.map((trend, i) => (
-                        <div key={i} className="space-y-2">
-                          <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{trend.title}</h4>
-                          <p className="text-xs text-slate-500 leading-relaxed">{trend.description}</p>
-                          {trend.url && (
-                            <a 
-                              href={trend.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="inline-block text-[10px] font-black text-cyan-500 uppercase tracking-widest hover:underline"
-                            >
-                              Ver mais
-                            </a>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">Buscando tendências...</p>
-                    )}
-                  </div>
-                </Card>
-              </div>
-
-              {/* Seletor de Serviços/Produtos - Grid Colmeia */}
-              <Card className="bg-slate-100/30 border-none rounded-[32px] p-6 overflow-hidden">
+              {/* Seletor de Serviços/Produtos - Grid Colmeia (Movido para o topo) */}
+              <Card className="bg-slate-100/30 border-none rounded-[24px] p-4 overflow-hidden">
                 <div className="flex items-center justify-center mb-8">
                   <div className="flex bg-white/50 backdrop-blur-sm p-1 rounded-[20px] border border-slate-200/50">
                     <button
@@ -746,7 +912,7 @@ export default function App() {
                   >
                     {(activeTab === 'servicos' ? data.servicos : data.produtos).map((item, i) => (
                       <motion.button
-                        key={i}
+                        key={`${item.nome}-${i}`}
                         whileTap={{ scale: 0.95 }}
                         onClick={() => {
                           setPendingService({ ...item, categoria: activeTab === 'servicos' ? 'servico' : 'produto' });
@@ -760,21 +926,165 @@ export default function App() {
                           {activeTab === 'servicos' ? <Scissors size={16} /> : <Package size={16} />}
                         </div>
                         <span className="text-[8px] font-black text-slate-500 uppercase tracking-tighter line-clamp-1">{item.nome}</span>
-                        <span className="text-xs font-black text-slate-900 mt-1">R${Math.floor(item.valor)}</span>
+                        <span className="text-xs font-black text-slate-900 mt-1">€{Math.floor(item.valor)}</span>
                       </motion.button>
                     ))}
                   </motion.div>
                 </AnimatePresence>
               </Card>
+
+              {/* Nova Secção de Métricas */}
+              <div className="space-y-2">
+                <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.2em]">Métricas e Tendência</p>
+                <MetricsSection 
+                  ganhosHoje={dailyStats.faturamento}
+                  metaDiaria={data.meta / 30} // Simplificação
+                  metaGeral={data.meta}
+                  resumoMes={monthlyStats.faturamento}
+                />
+              </div>
+
+              {/* AI Insights & Market Trends */}
+              <div className="grid grid-cols-1 gap-6">
+                <Card className="bg-gradient-to-br from-[#8b5cf6]/5 to-emerald-500/5 border border-[#8b5cf6]/10 rounded-[32px] p-8 relative overflow-hidden">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-[#8b5cf6]/10 text-[#8b5cf6] rounded-xl">
+                      <Sparkles size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 tracking-tight">AI Insights</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Gemini Intelligence</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 min-h-[100px]">
+                    {loadingAI ? (
+                      [1, 2, 3].map(i => (
+                        <div key={i} className="space-y-3 animate-pulse">
+                          <div className="h-4 w-24 bg-slate-200 rounded-full" />
+                          <div className="h-3 w-full bg-slate-100 rounded-full" />
+                        </div>
+                      ))
+                    ) : aiInsights.length > 0 ? (
+                      aiInsights.map((insight, i) => (
+                        <div key={`${insight.title}-${i}`} className="space-y-2">
+                          <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{insight.title}</h4>
+                          <p className="text-xs text-slate-500 leading-relaxed">{insight.description}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="col-span-3 flex flex-col items-center justify-center gap-2 text-center">
+                        <p className="text-xs text-slate-400 italic">Nenhum insight disponível no momento.</p>
+                        <button 
+                          onClick={() => {
+                            setLoadingAI(true);
+                            getAIInsights({
+                              saldo: data.saldo,
+                              meta: data.meta,
+                              faturamento: monthlyStats.faturamento,
+                              comissao: monthlyStats.comissao,
+                              servicosCount: data.servicos.length,
+                              produtosCount: data.produtos.length
+                            }).then(res => {
+                              if (res.insights) setAiInsights(res.insights);
+                              setLoadingAI(false);
+                            });
+                          }}
+                          className="text-[10px] font-black text-emerald-500 uppercase tracking-widest hover:underline"
+                        >
+                          Tentar novamente
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+
+                {/* Market Trends - Google Search Grounding */}
+                <Card className="bg-gradient-to-br from-cyan-500/5 to-indigo-500/5 border border-cyan-500/10 rounded-[32px] p-8 relative overflow-hidden">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-cyan-500/10 text-cyan-500 rounded-xl">
+                      <Search size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 tracking-tight">Tendências do Mercado</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Google Search Grounding</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 min-h-[100px]">
+                    {loadingTrends ? (
+                      [1, 2, 3].map(i => (
+                        <div key={i} className="space-y-3 animate-pulse">
+                          <div className="h-4 w-24 bg-slate-200 rounded-full" />
+                          <div className="h-3 w-full bg-slate-100 rounded-full" />
+                        </div>
+                      ))
+                    ) : marketTrends.length > 0 ? (
+                      marketTrends.map((trend, i) => (
+                        <div key={`${trend.title}-${i}`} className="space-y-2">
+                          <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{trend.title}</h4>
+                          <p className="text-xs text-slate-500 leading-relaxed">{trend.description}</p>
+                          {trend.url && (
+                            <a 
+                              href={trend.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="inline-block text-[10px] font-black text-cyan-500 uppercase tracking-widest hover:underline"
+                            >
+                              Ver mais
+                            </a>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="col-span-3 flex flex-col items-center justify-center gap-2 text-center">
+                        <p className="text-xs text-slate-400 italic">Nenhuma tendência disponível no momento.</p>
+                        <button 
+                          onClick={() => {
+                            setLoadingTrends(true);
+                            getMarketTrends().then(res => {
+                              if (res.trends) setMarketTrends(res.trends);
+                              setLoadingTrends(false);
+                            });
+                          }}
+                          className="text-[10px] font-black text-cyan-500 uppercase tracking-widest hover:underline"
+                        >
+                          Tentar novamente
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </div>
             </motion.div>
           )}
+
+          {/* FAB */}
+          <button
+            onClick={() => setShowMetricsDrawer(true)}
+            className="fixed bottom-6 right-6 p-4 bg-white/70 backdrop-blur-xl border border-white/20 rounded-full shadow-lg z-50 text-slate-900"
+          >
+            <ChartColumn size={24} />
+          </button>
+
+          <MetricsDrawer 
+            isOpen={showMetricsDrawer} 
+            onClose={() => setShowMetricsDrawer(false)}
+            metrics={{
+              ganhosHoje: dailyStats.faturamento,
+              metaDiaria: data.meta / 30,
+              metaGeral: data.meta,
+              resumoMes: monthlyStats.faturamento
+            }}
+          />
 
           {mainTab === 'agenda' && (
             <motion.div
               key="agenda"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
               className="space-y-6"
             >
               <CalendarGrid 
@@ -782,24 +1092,34 @@ export default function App() {
                 selectedDate={selectedDate} 
                 onSelectDate={setSelectedDate} 
                 onShowFolgas={() => setShowFolgaPopup(true)}
+                onSetFolgaEspecifica={(date, periodo) => {
+                  setData(prev => {
+                    const newFolgas = { ...prev.folgasEspecificas };
+                    if (periodo) {
+                      newFolgas[date] = periodo;
+                    } else {
+                      delete newFolgas[date];
+                    }
+                    return { ...prev, folgasEspecificas: newFolgas };
+                  });
+                  setShowSuccessToast(true);
+                  setTimeout(() => setShowSuccessToast(false), 2000);
+                }}
+                onAddService={() => setIsServiceModalOpen(true)}
                 onClearMonth={(month, year) => {
-                  if (confirm('Deseja realmente limpar o histórico deste mês?')) {
-                    setData(prev => ({
-                      ...prev,
-                      historico: prev.historico.filter(r => {
-                        const [y, m] = r.data.split('T')[0].split('-').map(Number);
-                        return !((m - 1) === month && y === year);
-                      })
-                    }));
-                  }
+                  setData(prev => ({
+                    ...prev,
+                    historico: prev.historico.filter(r => {
+                      const date = new Date(r.data);
+                      return !(date.getMonth() === month && date.getFullYear() === year);
+                    })
+                  }));
                 }}
                 onClearDay={(date) => {
-                  if (confirm('Deseja realmente limpar o histórico deste dia?')) {
-                    setData(prev => ({
-                      ...prev,
-                      historico: prev.historico.filter(r => r.data.split('T')[0] !== date)
-                    }));
-                  }
+                  setData(prev => ({
+                    ...prev,
+                    historico: prev.historico.filter(r => r.data.split('T')[0] !== date)
+                  }));
                 }}
               />
             </motion.div>
@@ -808,11 +1128,60 @@ export default function App() {
           {mainTab === 'analytics' && (
             <motion.div
               key="analytics"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
               className="space-y-6"
             >
+              <Card>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-2xl">
+                    <ChartColumn size={20} />
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight">Faturamento por Categoria</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="h-48 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: 'Serviços', value: chartData.categoryData.totalServicos },
+                            { name: 'Produtos', value: chartData.categoryData.totalProdutos }
+                          ]}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          <Cell fill="#10b981" />
+                          <Cell fill="#6366f1" />
+                        </Pie>
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: 'white', border: 'none', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }}
+                          formatter={(value: number) => [formatCurrency(value), 'Valor']}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 content-center">
+                    <div className="bg-slate-50 p-4 rounded-2xl">
+                      <p className="text-slate-400 font-black text-[9px] uppercase tracking-widest mb-1">Serviços</p>
+                      <h4 className="text-xl font-black text-slate-900">{formatCurrency(chartData.categoryData.totalServicos)}</h4>
+                      <p className="text-emerald-500 font-black text-[10px]">{chartData.categoryData.percentServicos.toFixed(1)}%</p>
+                    </div>
+                    <div className="bg-slate-50 p-4 rounded-2xl">
+                      <p className="text-slate-400 font-black text-[9px] uppercase tracking-widest mb-1">Produtos</p>
+                      <h4 className="text-xl font-black text-slate-900">{formatCurrency(chartData.categoryData.totalProdutos)}</h4>
+                      <p className="text-indigo-500 font-black text-[10px]">{chartData.categoryData.percentProdutos.toFixed(1)}%</p>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
               <Card>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-2xl">
@@ -837,7 +1206,7 @@ export default function App() {
                         fontSize={8} 
                         tickLine={false} 
                         axisLine={false} 
-                        tickFormatter={(value) => `R$${value}`}
+                        tickFormatter={(value) => `€${value}`}
                         tick={{ fontWeight: 900 }}
                       />
                       <Tooltip 
@@ -876,7 +1245,7 @@ export default function App() {
                         fontSize={10} 
                         tickLine={false} 
                         axisLine={false} 
-                        tickFormatter={(value) => `R$${value}`}
+                        tickFormatter={(value) => `€${value}`}
                         tick={{ fontWeight: 900 }}
                       />
                       <Tooltip 
@@ -915,7 +1284,7 @@ export default function App() {
                         fontSize={10} 
                         tickLine={false} 
                         axisLine={false} 
-                        tickFormatter={(value) => `R$${value}`}
+                        tickFormatter={(value) => `€${value}`}
                         tick={{ fontWeight: 900 }}
                       />
                       <Tooltip 
@@ -964,7 +1333,7 @@ export default function App() {
                         fontSize={10} 
                         tickLine={false} 
                         axisLine={false} 
-                        tickFormatter={(value) => `R$${value}`}
+                        tickFormatter={(value) => `€${value}`}
                         tick={{ fontWeight: 900 }}
                       />
                       <Tooltip 
@@ -983,9 +1352,10 @@ export default function App() {
           {mainTab === 'historico' && (
             <motion.div
               key="historico"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
               className="space-y-6"
             >
               <Card>
@@ -1010,7 +1380,7 @@ export default function App() {
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                           <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} tick={{ fontWeight: 900 }} />
-                          <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `R$${value}`} tick={{ fontWeight: 900 }} />
+                          <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `€${value}`} tick={{ fontWeight: 900 }} />
                           <Tooltip 
                             contentStyle={{ backgroundColor: 'white', border: '1px solid #f1f5f9', borderRadius: '24px', padding: '12px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                             itemStyle={{ color: '#10b981', fontWeight: '900' }}
@@ -1029,7 +1399,7 @@ export default function App() {
                         <BarChart data={chartData.goalsData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                           <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} tick={{ fontWeight: 900 }} />
-                          <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `R$${value}`} tick={{ fontWeight: 900 }} />
+                          <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `€${value}`} tick={{ fontWeight: 900 }} />
                           <Tooltip 
                             contentStyle={{ backgroundColor: 'white', border: '1px solid #f1f5f9', borderRadius: '24px', padding: '12px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                             itemStyle={{ fontWeight: '900' }}
@@ -1052,6 +1422,20 @@ export default function App() {
                     </div>
                     <h3 className="text-lg font-black text-slate-900 tracking-tight">Histórico de Atividades</h3>
                   </div>
+                  <button 
+                    onClick={() => setShowReportModal(true)}
+                    className="p-2 text-slate-400 hover:text-emerald-500 transition-all"
+                    title="Análise de Faturação e Relatórios"
+                  >
+                    <FileText size={20} />
+                  </button>
+                  <button 
+                    onClick={() => exportToCSV(data.historico, 'historico_completo.csv', true)}
+                    className="p-2 text-slate-400 hover:text-emerald-500 transition-all"
+                    title="Exportar Histórico Completo"
+                  >
+                    <Download size={20} />
+                  </button>
                 </div>
 
                 <div className="space-y-3">
@@ -1091,12 +1475,20 @@ export default function App() {
                             <span className={`text-sm font-black ${r.tipo === 'entrada' ? 'text-emerald-500' : 'text-red-500'}`}>
                               {r.tipo === 'entrada' ? '+' : '-'} {formatCurrency(r.valor)}
                             </span>
-                            <button 
-                              onClick={() => deleteRecord(r.id)}
-                              className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all bg-white rounded-xl shadow-sm"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                              <button 
+                                onClick={() => setEditingRecord(r)}
+                                className="p-2 text-slate-300 hover:text-indigo-500 transition-all bg-white rounded-xl shadow-sm"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button 
+                                onClick={() => deleteRecord(r.id)}
+                                className="p-2 text-slate-300 hover:text-red-500 transition-all bg-white rounded-xl shadow-sm"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </div>
                         </motion.div>
                       ))}
@@ -1122,6 +1514,17 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Mini FAB para Metas */}
+      {isLoggedIn && mainTab === 'inicio' && (
+        <button
+          onClick={() => setShowPerformancePanel(true)}
+          className="fixed bottom-24 right-6 w-12 h-12 bg-emerald-500 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-emerald-600 hover:scale-105 transition-all z-40"
+          aria-label="Ver Metas e Performance"
+        >
+          <Target size={20} />
+        </button>
+      )}
 
       {/* Bottom Navigation Integrada */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-slate-200 px-6 pt-2 pb-6 sm:pb-2 z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.02)]">
@@ -1150,6 +1553,12 @@ export default function App() {
             icon={<Clock size={24} />} 
             label="Histórico" 
           />
+          <NavButton 
+            active={mainTab === 'config'} 
+            onClick={() => setShowSettingsPopup(true)} 
+            icon={<Settings size={24} />} 
+            label="Config" 
+          />
         </div>
       </nav>
 
@@ -1159,13 +1568,22 @@ export default function App() {
           <Popup title="Editar Meta" onClose={() => setShowMetaPopup(false)}>
             <div className="space-y-6">
               <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Valor da Meta (R$)</label>
-                <input 
-                  type="number" 
-                  defaultValue={data.meta}
-                  onBlur={(e) => setData(prev => ({ ...prev, meta: Number(e.target.value) }))}
-                  className="w-full p-5 rounded-[32px] bg-slate-50 border border-slate-100 focus:border-emerald-500 focus:ring-8 focus:ring-emerald-500/5 outline-none transition-all font-black text-2xl text-slate-900 text-center"
-                />
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Valor da Meta (€)</label>
+                  <input 
+                    type="number" 
+                    defaultValue={data.meta}
+                    onBlur={(e) => {
+                      const val = Number(e.target.value);
+                      if (val < 0) {
+                        setErrorToast("A meta não pode ser negativa.");
+                        setTimeout(() => setErrorToast(null), 3000);
+                        e.target.value = data.meta.toString();
+                        return;
+                      }
+                      setData(prev => ({ ...prev, meta: val }));
+                    }}
+                    className="w-full p-5 rounded-[32px] bg-slate-50 border border-slate-100 focus:border-emerald-500 focus:ring-8 focus:ring-emerald-500/5 outline-none transition-all font-black text-2xl text-slate-900 text-center"
+                  />
               </div>
               <button onClick={() => setShowMetaPopup(false)} className="btn-primary w-full py-5 rounded-[32px] uppercase tracking-widest text-xs font-black">Salvar Meta</button>
             </div>
@@ -1215,7 +1633,7 @@ export default function App() {
                 </div>
                 <div className="space-y-3">
                   {data.servicos.map((s, i) => (
-                    <div key={i} className="flex items-center gap-3 p-2 bg-slate-50 rounded-2xl border border-transparent hover:border-slate-200 transition-all">
+                    <div key={`${s.nome}-${i}`} className="flex items-center gap-2 p-1.5 bg-slate-50 rounded-xl border border-transparent hover:border-slate-200 transition-all">
                       <input 
                         type="text" 
                         value={s.nome}
@@ -1224,35 +1642,40 @@ export default function App() {
                           newServicos[i].nome = e.target.value;
                           setData(prev => ({ ...prev, servicos: newServicos }));
                         }}
-                        className="flex-1 p-3 rounded-xl bg-transparent font-black text-sm text-slate-900 outline-none"
+                        className="flex-1 p-2 rounded-lg bg-transparent font-black text-xs text-slate-900 outline-none"
                       />
-                      <div className="flex items-center bg-white rounded-xl px-3 border border-slate-100">
-                        <span className="text-[10px] font-black text-slate-400 mr-1">R$</span>
+                      <div className="flex items-center bg-white rounded-lg px-2 border border-slate-100">
+                        <span className="text-[9px] font-black text-slate-400 mr-1">€</span>
                         <input 
                           type="number" 
                           value={s.valor}
                           onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (val < 0) return;
                             const newServicos = [...data.servicos];
-                            newServicos[i].valor = Number(e.target.value);
+                            newServicos[i].valor = val;
                             setData(prev => ({ ...prev, servicos: newServicos }));
                           }}
-                          className="w-16 p-3 bg-transparent font-black text-sm text-emerald-500 outline-none text-right"
+                          className="w-12 p-2 bg-transparent font-black text-xs text-emerald-500 outline-none text-right"
                         />
                       </div>
                       <button 
-                        onClick={() => setData(prev => ({ ...prev, servicos: prev.servicos.filter((_, idx) => idx !== i) }))}
-                        className="p-3 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
+                        onClick={() => deleteCatalogService(i)}
+                        disabled={isSyncing}
+                        className="p-3 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all disabled:opacity-30"
                       >
-                        <Trash2 size={18} />
+                        {isSyncing ? <RefreshCw size={18} className="animate-spin" /> : <Trash2 size={18} />}
                       </button>
                     </div>
                   ))}
                 </div>
                 <button 
-                  onClick={() => setData(prev => ({ ...prev, servicos: [...prev.servicos, { nome: 'Novo Serviço', valor: 0 }] }))}
-                  className="flex items-center justify-center gap-2 w-full py-4 border-2 border-dashed border-slate-200 rounded-[24px] text-slate-400 font-black text-xs hover:border-emerald-500/30 hover:text-emerald-500 transition-all uppercase tracking-widest"
+                  onClick={addCatalogService}
+                  disabled={isSyncing}
+                  className="flex items-center justify-center gap-2 w-full py-4 border-2 border-dashed border-slate-200 rounded-[24px] text-slate-400 font-black text-xs hover:border-emerald-500/30 hover:text-emerald-500 transition-all uppercase tracking-widest disabled:opacity-30"
                 >
-                  <Plus size={18} /> Adicionar Serviço
+                  {isSyncing ? <RefreshCw size={18} className="animate-spin" /> : <Plus size={18} />} 
+                  {isSyncing ? 'Sincronizando...' : 'Adicionar Serviço'}
                 </button>
               </div>
 
@@ -1264,7 +1687,7 @@ export default function App() {
                 </div>
                 <div className="space-y-3">
                   {data.produtos.map((p, i) => (
-                    <div key={i} className="flex items-center gap-3 p-2 bg-slate-50 rounded-2xl border border-transparent hover:border-slate-200 transition-all">
+                    <div key={`${p.nome}-${i}`} className="flex items-center gap-2 p-1.5 bg-slate-50 rounded-xl border border-transparent hover:border-slate-200 transition-all">
                       <input 
                         type="text" 
                         value={p.nome}
@@ -1273,26 +1696,28 @@ export default function App() {
                           newProdutos[i].nome = e.target.value;
                           setData(prev => ({ ...prev, produtos: newProdutos }));
                         }}
-                        className="flex-1 p-3 rounded-xl bg-transparent font-black text-sm text-slate-900 outline-none"
+                        className="flex-1 p-2 rounded-lg bg-transparent font-black text-xs text-slate-900 outline-none"
                       />
-                      <div className="flex items-center bg-white rounded-xl px-3 border border-slate-100">
-                        <span className="text-[10px] font-black text-slate-400 mr-1">R$</span>
+                      <div className="flex items-center bg-white rounded-lg px-2 border border-slate-100">
+                        <span className="text-[9px] font-black text-slate-400 mr-1">€</span>
                         <input 
                           type="number" 
                           value={p.valor}
                           onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (val < 0) return;
                             const newProdutos = [...data.produtos];
-                            newProdutos[i].valor = Number(e.target.value);
+                            newProdutos[i].valor = val;
                             setData(prev => ({ ...prev, produtos: newProdutos }));
                           }}
-                          className="w-16 p-3 bg-transparent font-black text-sm text-cyan-500 outline-none text-right"
+                          className="w-12 p-2 bg-transparent font-black text-xs text-cyan-500 outline-none text-right"
                         />
                       </div>
                       <button 
                         onClick={() => setData(prev => ({ ...prev, produtos: prev.produtos.filter((_, idx) => idx !== i) }))}
-                        className="p-3 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
+                        className="p-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   ))}
@@ -1303,6 +1728,33 @@ export default function App() {
                 >
                   <Plus size={18} /> Adicionar Produto
                 </button>
+              </div>
+
+              <div className="pt-6 border-t border-slate-100 space-y-3">
+                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Exportar Dados</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => exportToCSV(data.historico, 'historico.csv', true)}
+                    className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest transition-all"
+                  >
+                    Histórico (CSV)
+                  </button>
+                  <button 
+                    onClick={() => exportToCSV([...data.servicos.map(s => ({...s, tipo: 'servico'})), ...data.produtos.map(p => ({...p, tipo: 'produto'}))], 'catalogo.csv')}
+                    className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest transition-all"
+                  >
+                    Catálogo (CSV)
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setShowSettingsPopup(false);
+                      setShowReportModal(true);
+                    }}
+                    className="py-3 px-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all col-span-2"
+                  >
+                    Baixar Relatório (PDF)
+                  </button>
+                </div>
               </div>
             </div>
           </Popup>
@@ -1500,7 +1952,166 @@ export default function App() {
             </div>
           </Popup>
         )}
+
+        {editingRecord && (
+          <Popup title="Editar Registro" onClose={() => setEditingRecord(null)}>
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Descrição</label>
+                <input 
+                  type="text" 
+                  value={editingRecord.descricao}
+                  onChange={(e) => setEditingRecord({...editingRecord, descricao: e.target.value})}
+                  className="w-full p-5 rounded-[32px] bg-slate-50 border border-slate-100 focus:border-emerald-500 outline-none transition-all font-black text-slate-900"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Valor (€)</label>
+                <input 
+                  type="number" 
+                  value={editingRecord.valor}
+                  onChange={(e) => setEditingRecord({...editingRecord, valor: Number(e.target.value)})}
+                  className="w-full p-5 rounded-[32px] bg-slate-50 border border-slate-100 focus:border-emerald-500 outline-none transition-all font-black text-slate-900"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Data</label>
+                <input 
+                  type="datetime-local" 
+                  value={new Date(new Date(editingRecord.data).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                  onChange={(e) => setEditingRecord({...editingRecord, data: new Date(e.target.value).toISOString()})}
+                  className="w-full p-5 rounded-[32px] bg-slate-50 border border-slate-100 focus:border-emerald-500 outline-none transition-all font-black text-slate-900"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Categoria</label>
+                <select 
+                  value={editingRecord.categoria || ''}
+                  onChange={(e) => setEditingRecord({...editingRecord, categoria: e.target.value as 'servico' | 'produto'})}
+                  className="w-full p-5 rounded-[32px] bg-slate-50 border border-slate-100 focus:border-emerald-500 outline-none transition-all font-black text-slate-900"
+                >
+                  <option value="servico">Serviço</option>
+                  <option value="produto">Produto</option>
+                </select>
+              </div>
+              <button 
+                onClick={() => updateRecord(editingRecord)}
+                className="btn-primary w-full py-5 rounded-[32px] uppercase tracking-widest text-xs font-black"
+              >
+                Salvar Alterações
+              </button>
+            </div>
+          </Popup>
+        )}
       </AnimatePresence>
+
+      {/* Botão Flutuante Minha Meta */}
+      {isLoggedIn && mainTab === 'inicio' && (
+        <motion.button 
+          initial={{ opacity: 0, scale: 0.8, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setShowPerformancePanel(true)}
+          className="fixed bottom-28 right-6 z-40 bg-slate-900 text-white px-6 py-4 rounded-full shadow-[0_20px_40px_rgba(0,0,0,0.3)] flex items-center gap-3 border border-white/10 group"
+        >
+          <div className="p-1.5 bg-white/10 rounded-lg group-hover:bg-emerald-500/20 group-hover:text-emerald-400 transition-all">
+            <Target size={18} />
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-widest">Minha Meta</span>
+        </motion.button>
+      )}
+
+      {/* Performance Panel Overlay */}
+      <AnimatePresence>
+        {showPerformancePanel && (
+          <div className="fixed inset-0 z-[70] flex items-end justify-center p-6 bg-slate-950/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              className="w-full max-w-lg bg-white rounded-[40px] shadow-[0_40px_100px_rgba(0,0,0,0.2)] p-8 space-y-8 relative"
+            >
+              <button 
+                onClick={() => setShowPerformancePanel(false)}
+                className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 transition-all"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-2xl">
+                  <Target size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Painel de Performance</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Métricas em tempo real</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-8">
+                {/* Ganhos do Dia */}
+                <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Ganhos do Dia</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-sm font-black text-slate-300">€</span>
+                    <h4 className="text-4xl font-black text-slate-900">{dailyStats.comissao.toFixed(2)}</h4>
+                  </div>
+                </div>
+
+                {/* Meta Diária */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Meta Diária</p>
+                      <h4 className="text-2xl font-black text-slate-900">{taskProgress.toFixed(0)}%</h4>
+                    </div>
+                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Objetivo: 5 serviços</span>
+                  </div>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${taskProgress}%` }}
+                      className="h-full bg-indigo-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.4)]"
+                    />
+                  </div>
+                </div>
+
+                {/* Meta Geral */}
+                <div className="space-y-4 pt-8 border-t border-slate-100">
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Meta Geral (Mensal)</p>
+                      <h4 className="text-2xl font-black text-slate-900">{metaProgress.toFixed(0)}%</h4>
+                    </div>
+                    <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Objetivo: €{data.meta}</span>
+                  </div>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${metaProgress}%` }}
+                      className="h-full bg-amber-500 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.4)]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setShowPerformancePanel(false)}
+                className="w-full py-5 bg-slate-900 text-white font-black rounded-[32px] shadow-xl hover:bg-slate-800 transition-all uppercase tracking-widest text-xs"
+              >
+                Fechar Painel
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <ReportModal 
+        isOpen={showReportModal} 
+        onClose={() => setShowReportModal(false)} 
+        data={data} 
+      />
 
       {/* Success Toast */}
       <AnimatePresence>
@@ -1521,6 +2132,25 @@ export default function App() {
                 <CheckCircle2 size={24} strokeWidth={3} />
               </motion.div>
               <span className="font-black text-base uppercase tracking-widest">Adicionado com Sucesso!</span>
+            </motion.div>
+          )}
+          {errorToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8, y: 20 }}
+              transition={{ type: "spring", bounce: 0.5 }}
+              className="fixed bottom-32 left-1/2 -translate-x-1/2 z-[100] bg-red-500 text-white px-8 py-5 rounded-[32px] shadow-[0_20px_40px_rgba(239,68,68,0.4)] flex items-center gap-4 border-2 border-red-400/30"
+            >
+              <motion.div 
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.2, type: "spring", bounce: 0.6 }}
+                className="bg-white text-red-500 p-2 rounded-full shadow-inner"
+              >
+                <AlertCircle size={24} strokeWidth={3} />
+              </motion.div>
+              <span className="font-black text-base uppercase tracking-widest">{errorToast}</span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1596,12 +2226,27 @@ export default function App() {
 const NavButton = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
   <button 
     onClick={onClick}
-    className={`flex flex-col items-center gap-1 transition-all relative ${
+    aria-label={label}
+    className={`flex flex-col items-center gap-1 transition-all relative group ${
       active ? 'text-emerald-500' : 'text-slate-600 hover:text-slate-400'
-    }`}
+    } hover:scale-110 active:scale-95`}
   >
-    <div className={`p-2 rounded-2xl transition-all ${active ? 'bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : ''}`}>
+    <div className={`p-2 rounded-2xl transition-all relative ${
+      active ? 'bg-emerald-500/10 shadow-[0_10px_25px_rgba(16,185,129,0.2)]' : 'group-hover:bg-slate-100'
+    }`}>
+      {active && (
+        <motion.div
+          animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute inset-0 bg-emerald-500/10 rounded-2xl -z-10"
+        />
+      )}
       {React.cloneElement(icon as React.ReactElement, { size: 22 })}
+      {active && (
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+          3
+        </div>
+      )}
     </div>
     <span className="text-[10px] font-black uppercase tracking-tighter">{label}</span>
     {active && (
@@ -1613,9 +2258,11 @@ const NavButton = ({ active, onClick, icon, label }: { active: boolean, onClick:
   </button>
 );
 
-const CalendarGrid = ({ data, selectedDate, onSelectDate, onShowFolgas, onClearMonth, onClearDay }: { data: AppData, selectedDate: string | null, onSelectDate: (d: string | null) => void, onShowFolgas: () => void, onClearMonth: (month: number, year: number) => void, onClearDay: (date: string) => void }) => {
+const CalendarGrid = ({ data, selectedDate, onSelectDate, onShowFolgas, onClearMonth, onClearDay, onSetFolgaEspecifica, onAddService }: { data: AppData, selectedDate: string | null, onSelectDate: (d: string | null) => void, onShowFolgas: () => void, onClearMonth: (month: number, year: number) => void, onClearDay: (date: string) => void, onSetFolgaEspecifica: (date: string, periodo: 'completo' | 'manha' | 'tarde' | null) => void, onAddService: () => void }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [isMarkingFolga, setIsMarkingFolga] = useState(false);
+  const [folgaPopupDate, setFolgaPopupDate] = useState<string | null>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
 
   const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
@@ -1732,23 +2379,25 @@ const CalendarGrid = ({ data, selectedDate, onSelectDate, onShowFolgas, onClearM
       {/* Action Buttons */}
       <div className="grid grid-cols-2 gap-3">
         <button 
-          onClick={onShowFolgas}
-          className="col-span-2 py-4 bg-white border border-slate-100 rounded-3xl flex items-center justify-center gap-3 text-slate-500 font-black hover:bg-slate-50 transition-all shadow-sm"
+          onClick={() => setIsMarkingFolga(!isMarkingFolga)}
+          className={`col-span-2 py-4 border rounded-3xl flex items-center justify-center gap-3 font-black transition-all shadow-sm ${isMarkingFolga ? 'bg-amber-500 text-white border-amber-600 shadow-amber-500/30' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
         >
           <Moon size={20} />
-          Marcar folga
+          {isMarkingFolga ? 'Concluir Marcação de Folgas' : 'Marcar folga'}
         </button>
         <button 
-          onClick={() => onClearMonth(currentMonth, currentYear)}
-          className="py-4 bg-white border border-slate-100 rounded-3xl flex items-center justify-center gap-2 text-orange-500 font-black hover:bg-orange-50 transition-all shadow-sm uppercase tracking-widest text-[10px]"
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onClearMonth(currentMonth, currentYear); }}
+          className="py-4 bg-white border border-orange-200 rounded-3xl flex items-center justify-center gap-2 text-orange-600 font-black hover:bg-orange-50 transition-all shadow-sm uppercase tracking-widest text-[10px]"
         >
           <Trash2 size={16} />
           Zerar Mês
         </button>
         <button 
-          onClick={() => selectedDate ? onClearDay(selectedDate) : null}
+          type="button"
+          onClick={(e) => { e.stopPropagation(); if (selectedDate) onClearDay(selectedDate); }}
           disabled={!selectedDate}
-          className={`py-4 bg-white border border-slate-100 rounded-3xl flex items-center justify-center gap-2 font-black transition-all shadow-sm uppercase tracking-widest text-[10px] ${selectedDate ? 'text-red-500 hover:bg-red-50' : 'text-slate-300 cursor-not-allowed'}`}
+          className={`py-4 bg-white border rounded-3xl flex items-center justify-center gap-2 font-black transition-all shadow-sm uppercase tracking-widest text-[10px] ${selectedDate ? 'border-red-200 text-red-600 hover:bg-red-50' : 'border-slate-100 text-slate-400 cursor-not-allowed opacity-50'}`}
         >
           <Trash2 size={16} />
           Zerar Dia
@@ -1773,38 +2422,106 @@ const CalendarGrid = ({ data, selectedDate, onSelectDate, onShowFolgas, onClearM
             const dateKey = getLocalISO(date);
             const stats = dailyData[dateKey];
             const isSelected = selectedDate === dateKey;
-            const folga = data.diasFolga.find(d => d.dia === date.getDay());
+            
+            // Verifica folga específica primeiro, depois a folga recorrente
+            const folgaEspecifica = data.folgasEspecificas?.[dateKey];
+            const folgaRecorrente = data.diasFolga.find(d => d.dia === date.getDay());
+            const folga = folgaEspecifica ? { periodo: folgaEspecifica } : folgaRecorrente;
+            
             const isToday = getLocalISO(new Date()) === dateKey;
 
             return (
-              <button
-                key={day}
-                onClick={() => onSelectDate(isSelected ? null : dateKey)}
-                className={`
-                  relative flex flex-col items-center justify-center rounded-2xl transition-all h-16 border
-                  ${isSelected ? 'border-emerald-500 bg-emerald-500/10' : 
-                    isToday ? 'border-indigo-500/50 bg-indigo-500/5' : 
-                    'border-transparent bg-slate-50 hover:bg-slate-100'}
-                  ${folga?.periodo === 'completo' ? 'opacity-60 grayscale-[0.3]' : ''}
-                `}
-              >
-                <div className="absolute top-1.5 right-1.5 flex gap-0.5">
-                   {stats && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />}
-                   {folga?.periodo === 'completo' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />}
-                   {folga?.periodo === 'manha' && <div className="w-1.5 h-1.5 rounded-t-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />}
-                   {folga?.periodo === 'tarde' && <div className="w-1.5 h-1.5 rounded-b-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />}
-                </div>
+              <div key={day} className="relative">
+                <button
+                  onClick={() => {
+                    if (isMarkingFolga) {
+                      setFolgaPopupDate(dateKey);
+                    } else if (folga) {
+                      onSelectDate(isSelected ? null : dateKey);
+                    } else {
+                      onSelectDate(dateKey);
+                      onAddService();
+                    }
+                  }}
+                  className={`
+                    w-full relative flex flex-col items-center justify-center rounded-2xl transition-all h-16 border
+                    ${isSelected && !isMarkingFolga ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_8px_20px_rgba(16,185,129,0.1)]' : 
+                      isToday ? 'border-indigo-500/50 bg-indigo-500/5' : 
+                      folga ? 'border-amber-200 bg-amber-50/50' :
+                      'border-transparent bg-slate-50 hover:bg-slate-100'}
+                    ${folga?.periodo === 'completo' ? 'opacity-60 grayscale-[0.3]' : ''}
+                    ${isMarkingFolga ? 'ring-2 ring-amber-500/20 hover:ring-amber-500/50' : ''}
+                  `}
+                >
+                  <div className="absolute top-1.5 right-1.5 flex gap-0.5">
+                     {stats && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />}
+                     {folga?.periodo === 'completo' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />}
+                     {folga?.periodo === 'manha' && <div className="w-1.5 h-1.5 rounded-t-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />}
+                     {folga?.periodo === 'tarde' && <div className="w-1.5 h-1.5 rounded-b-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />}
+                  </div>
 
-                <span className={`text-xs font-black ${isSelected ? 'text-emerald-500' : isToday ? 'text-indigo-500' : 'text-slate-900'}`}>
-                  {day}
-                </span>
-                
-                {stats && (
-                  <span className="text-[8px] font-black text-emerald-500/80 mt-0.5">
-                    R${Math.round(stats.total)}
+                  {folga && (
+                    <div className="absolute bottom-1.5 text-amber-500 opacity-40">
+                      <Coffee size={10} />
+                    </div>
+                  )}
+
+                  <span className={`text-xs font-black ${isSelected && !isMarkingFolga ? 'text-emerald-500' : isToday ? 'text-indigo-500' : 'text-slate-900'}`}>
+                    {day}
                   </span>
-                )}
-              </button>
+                  
+                  {stats && (
+                    <span className="text-[8px] font-black text-emerald-500/80 mt-0.5">
+                      €{Math.round(stats.total)}
+                    </span>
+                  )}
+                </button>
+
+                {/* Popup de seleção de folga para o dia */}
+                <AnimatePresence>
+                  {folgaPopupDate === dateKey && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-50"
+                    >
+                      <div className="flex justify-between items-center mb-2 px-2">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Folga: {day}/{currentMonth + 1}</span>
+                        <button onClick={() => setFolgaPopupDate(null)} className="text-slate-400 hover:text-slate-600">
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        <button 
+                          onClick={() => { onSetFolgaEspecifica(dateKey, 'completo'); setFolgaPopupDate(null); }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${folga?.periodo === 'completo' ? 'bg-amber-50 text-amber-600' : 'hover:bg-slate-50 text-slate-600'}`}
+                        >
+                          Dia Inteiro
+                        </button>
+                        <button 
+                          onClick={() => { onSetFolgaEspecifica(dateKey, 'manha'); setFolgaPopupDate(null); }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${folga?.periodo === 'manha' ? 'bg-amber-50 text-amber-600' : 'hover:bg-slate-50 text-slate-600'}`}
+                        >
+                          Folga Manhã
+                        </button>
+                        <button 
+                          onClick={() => { onSetFolgaEspecifica(dateKey, 'tarde'); setFolgaPopupDate(null); }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${folga?.periodo === 'tarde' ? 'bg-amber-50 text-amber-600' : 'hover:bg-slate-50 text-slate-600'}`}
+                        >
+                          Folga Tarde
+                        </button>
+                        <button 
+                          onClick={() => { onSetFolgaEspecifica(dateKey, null); setFolgaPopupDate(null); }}
+                          className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 transition-all mt-1 border-t border-slate-50"
+                        >
+                          Remover Folga
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             );
           })}
         </div>

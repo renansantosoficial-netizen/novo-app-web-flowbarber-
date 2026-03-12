@@ -44,6 +44,9 @@ export interface AppData {
   percentualGanho: number;
   percentualProdutos: number;
   diasFolga: DayOffConfig[];
+  folgasEspecificas?: Record<string, 'completo' | 'manha' | 'tarde'>;
+  barberName?: string;
+  perfilUrl?: string;
 }
 
 export const DEFAULT_DATA: AppData = {
@@ -65,4 +68,6 @@ export const DEFAULT_DATA: AppData = {
   percentualGanho: 50,
   percentualProdutos: 10,
   diasFolga: [],
+  folgasEspecificas: {},
+  barberName: "Flow Barber",
 };
