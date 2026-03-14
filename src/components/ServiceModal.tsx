@@ -10,6 +10,7 @@ export const ServiceModal = ({ isOpen, onClose, onSave }: { isOpen: boolean, onC
     <AnimatePresence>
       {isOpen && (
         <motion.div
+          key="service-modal"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}

@@ -23,19 +23,34 @@
 }
 
 .glass-card, .apple-glass {
-  @apply bg-white/70 backdrop-blur-xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl p-6;
+  @apply bg-white/60 backdrop-blur-2xl border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.04)] rounded-[32px] p-6 transition-all duration-300;
 }
 
 .dark-mode .glass-card, .dark-mode .apple-glass {
-  @apply bg-slate-900/70 backdrop-blur-xl border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-3xl p-6;
+  @apply bg-slate-900/60 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-[32px] p-6 transition-all duration-300;
 }
 
 .apple-glass-mini {
-  @apply bg-white/70 backdrop-blur-xl border border-white/40 shadow-[0_4px_20px_rgb(0,0,0,0.06)] rounded-full;
+  @apply bg-white/60 backdrop-blur-2xl border border-white/40 shadow-[0_4px_20px_rgba(0,0,0,0.06)] rounded-full transition-all duration-300;
 }
 
 .dark-mode .apple-glass-mini {
-  @apply bg-slate-900/70 backdrop-blur-xl border border-white/10 shadow-[0_4px_20px_rgb(0,0,0,0.15)] rounded-full;
+  @apply bg-slate-900/60 backdrop-blur-2xl border border-white/10 shadow-[0_4px_20px_rgba(0,0,0,0.15)] rounded-full transition-all duration-300;
+}
+
+/* Micro-interactions */
+.tap-active {
+  @apply active:scale-95 transition-transform duration-100;
+}
+
+.pulse-active {
+  animation: pulse-subtle 2s infinite;
+}
+
+@keyframes pulse-subtle {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
 }
 
 .apple-divider {
