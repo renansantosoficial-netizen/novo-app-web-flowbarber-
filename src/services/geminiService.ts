@@ -55,12 +55,15 @@ export async function getAIInsights(data: any) {
       const prompt = `
         Você é um consultor de negócios especializado em barbearias premium.
         Analise os seguintes dados da barbearia "Flow Barber" e forneça 3 insights curtos e acionáveis para aumentar o faturamento ou melhorar a eficiência.
+        Além disso, gere um "Prompt Estratégico" (um comando ou instrução clara) que o barbeiro deve seguir para implementar as melhorias sugeridas.
         
         Dados:
         - Saldo Atual: € ${data.saldo}
         - Meta Mensal: € ${data.meta}
         - Faturamento do Mês: € ${data.faturamento}
         - Comissão Total: € ${data.comissao}
+        - Comissão de Serviços: € ${data.comissaoServicos}
+        - Comissão de Produtos: € ${data.comissaoProdutos}
         - Número de Serviços: ${data.servicosCount}
         - Número de Produtos: ${data.produtosCount}
         
@@ -69,7 +72,8 @@ export async function getAIInsights(data: any) {
           "insights": [
             { "title": "Título", "description": "Descrição curta" },
             ...
-          ]
+          ],
+          "strategicPrompt": "Texto do prompt estratégico para execução imediata"
         }
       `;
 
@@ -88,9 +92,9 @@ export async function getAIInsights(data: any) {
       console.error("Error fetching AI insights:", error);
       // Cache failure for 1 hour to prevent hammering the API
       if (error?.status === 429) {
-        setCachedData(cacheKey, { insights: [], error: "Quota excedida. Tente novamente mais tarde." });
+        setCachedData(cacheKey, { insights: [], strategicPrompt: "", error: "Quota excedida. Tente novamente mais tarde." });
       }
-      return { insights: [], error: "Não foi possível carregar os insights no momento." };
+      return { insights: [], strategicPrompt: "", error: "Não foi possível carregar os insights no momento." };
     } finally {
       delete inFlightRequests[cacheKey];
     }

@@ -59,7 +59,8 @@ import {
 import { Card } from './components/Card';
 import { MetricsSection } from './components/MetricsSection';
 import { MetricsDrawer } from './components/MetricsDrawer';
-import { AppData, DEFAULT_DATA, HistoryRecord, Contact, Service, DayOffConfig } from './types';
+import { ConfirmationModal } from './components/ConfirmationModal';
+import { AppData, DEFAULT_DATA, HistoryRecord, Contact, Service, DayOffConfig, SpecialEvent } from './types';
 import { getAIInsights, getMarketTrends } from './services/geminiService';
 import Cropper from 'react-easy-crop';
 
@@ -104,6 +105,7 @@ const AnimatedTitle = ({ text }: { text: string }) => {
 
 import { ReportModal } from './components/ReportModal';
 import { ServiceModal } from './components/ServiceModal';
+import { CatalogSelectionModal } from './components/CatalogSelectionModal';
 
 export default function App() {
   const [data, setData] = useState<AppData>(() => {
@@ -112,37 +114,45 @@ export default function App() {
     try {
       const parsed = JSON.parse(saved);
       
-      // Ensure unique IDs for history and contacts
-      const historico = (parsed.historico || DEFAULT_DATA.historico).map((r: any, i: number) => {
-        const isDuplicate = parsed.historico && parsed.historico.slice(0, i).some((prev: any) => prev.id === r.id);
-        return {
-          ...r,
-          id: (r.id && !isDuplicate) ? r.id : generateId()
-        };
+      // Ensure unique IDs for history, contacts, services, and products
+      const usedHistoricoIds = new Set();
+      const historico = (parsed.historico || DEFAULT_DATA.historico).map((r: any) => {
+        let id = r.id;
+        if (!id || usedHistoricoIds.has(id)) {
+          id = generateId();
+        }
+        usedHistoricoIds.add(id);
+        return { ...r, id };
       });
 
-      const contatos = (parsed.contatos || DEFAULT_DATA.contatos).map((c: any, i: number) => {
-        const isDuplicate = parsed.contatos && parsed.contatos.slice(0, i).some((prev: any) => prev.id === c.id);
-        return {
-          ...c,
-          id: (c.id && !isDuplicate) ? c.id : generateId()
-        };
+      const usedContatoIds = new Set();
+      const contatos = (parsed.contatos || DEFAULT_DATA.contatos).map((c: any) => {
+        let id = c.id;
+        if (!id || usedContatoIds.has(id)) {
+          id = generateId();
+        }
+        usedContatoIds.add(id);
+        return { ...c, id };
       });
 
-      const servicos = (parsed.servicos || DEFAULT_DATA.servicos).map((s: any, i: number) => {
-        const isDuplicate = parsed.servicos && parsed.servicos.slice(0, i).some((prev: any) => prev.id === s.id);
-        return {
-          ...s,
-          id: (s.id && !isDuplicate) ? s.id : generateId()
-        };
+      const usedServicoIds = new Set();
+      const servicos = (parsed.servicos || DEFAULT_DATA.servicos).map((s: any) => {
+        let id = s.id;
+        if (!id || usedServicoIds.has(id)) {
+          id = generateId();
+        }
+        usedServicoIds.add(id);
+        return { ...s, id };
       });
 
-      const produtos = (parsed.produtos || DEFAULT_DATA.produtos).map((p: any, i: number) => {
-        const isDuplicate = parsed.produtos && parsed.produtos.slice(0, i).some((prev: any) => prev.id === p.id);
-        return {
-          ...p,
-          id: (p.id && !isDuplicate) ? p.id : generateId()
-        };
+      const usedProdutoIds = new Set();
+      const produtos = (parsed.produtos || DEFAULT_DATA.produtos).map((p: any) => {
+        let id = p.id;
+        if (!id || usedProdutoIds.has(id)) {
+          id = generateId();
+        }
+        usedProdutoIds.add(id);
+        return { ...p, id };
       });
 
       // Merge with DEFAULT_DATA to ensure new fields exist
@@ -226,6 +236,35 @@ export default function App() {
   const [showMetricsDrawer, setShowMetricsDrawer] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [isCatalogSelectionModalOpen, setIsCatalogSelectionModalOpen] = useState(false);
+
+  // Confirmation Modals State
+  const [confirmation, setConfirmation] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    variant: 'danger'
+  });
+
+  const openConfirmation = (title: string, message: string, onConfirm: () => void, variant: 'danger' | 'warning' | 'info' = 'danger') => {
+    setConfirmation({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmation(prev => ({ ...prev, isOpen: false }));
+      },
+      variant
+    });
+  };
 
   // Dark Mode System Sync
   useEffect(() => {
@@ -287,6 +326,7 @@ export default function App() {
   const [visibleRecords, setVisibleRecords] = useState(10);
   const [selectedRecurrence, setSelectedRecurrence] = useState<number>(0);
   const [aiInsights, setAiInsights] = useState<{ title: string, description: string }[]>([]);
+  const [strategicPrompt, setStrategicPrompt] = useState<string>("");
   const [marketTrends, setMarketTrends] = useState<{ title: string, description: string, url?: string }[]>([]);
   const [loadingAI, setLoadingAI] = useState(false);
   const [loadingTrends, setLoadingTrends] = useState(false);
@@ -341,6 +381,25 @@ export default function App() {
     };
   }, [data]);
 
+  const totalBalance = useMemo(() => {
+    return data.historico.reduce((acc, r) => {
+      return r.tipo === 'entrada' ? acc + r.valor : acc - r.valor;
+    }, 0);
+  }, [data.historico]);
+
+  const totalCommissions = useMemo(() => {
+    return data.historico.reduce((acc, r) => {
+      if (r.tipo === 'entrada') {
+        if (r.categoria === 'servico') {
+          acc.servicos += r.valor * (data.percentualGanho / 100);
+        } else if (r.categoria === 'produto') {
+          acc.produtos += r.valor * (data.percentualProdutos / 100);
+        }
+      }
+      return acc;
+    }, { servicos: 0, produtos: 0 });
+  }, [data.historico, data.percentualGanho, data.percentualProdutos]);
+
   // Fetch AI Insights & Market Trends
   useEffect(() => {
     if (isLoggedIn && mainTab === 'inicio' && aiInsights.length === 0 && marketTrends.length === 0) {
@@ -355,6 +414,7 @@ export default function App() {
         if (isCacheValid && cachedAI && cachedTrends) {
           setAiInsights(JSON.parse(cachedAI));
           setMarketTrends(JSON.parse(cachedTrends));
+          setStrategicPrompt(localStorage.getItem('flowBarberStrategicPrompt') || "");
           return;
         }
 
@@ -363,10 +423,12 @@ export default function App() {
         
         const [insightsResult, trendsResult] = await Promise.all([
           getAIInsights({
-            saldo: data.saldo,
+            saldo: totalBalance,
             meta: data.meta,
             faturamento: monthlyStats.faturamento,
             comissao: monthlyStats.comissao,
+            comissaoServicos: totalCommissions.servicos,
+            comissaoProdutos: totalCommissions.produtos,
             servicosCount: data.servicos.length,
             produtosCount: data.produtos.length
           }),
@@ -375,7 +437,9 @@ export default function App() {
 
         if (insightsResult.insights) {
           setAiInsights(insightsResult.insights);
+          setStrategicPrompt(insightsResult.strategicPrompt || "");
           localStorage.setItem('flowBarberAIInsights', JSON.stringify(insightsResult.insights));
+          localStorage.setItem('flowBarberStrategicPrompt', insightsResult.strategicPrompt || "");
         }
         if (trendsResult.trends) {
           setMarketTrends(trendsResult.trends);
@@ -389,7 +453,7 @@ export default function App() {
       };
       fetchData();
     }
-  }, [isLoggedIn, mainTab, data.saldo, data.meta, monthlyStats.faturamento, aiInsights.length, marketTrends.length]);
+  }, [isLoggedIn, mainTab, totalBalance, data.meta, monthlyStats.faturamento, totalCommissions.servicos, totalCommissions.produtos, aiInsights.length, marketTrends.length]);
 
   const chartData = useMemo(() => {
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -458,12 +522,6 @@ export default function App() {
     return { monthlyData, yearlyData, dailyData, goalsData, categoryData };
   }, [data.historico, data.meta]);
 
-  const totalBalance = useMemo(() => {
-    return data.historico.reduce((acc, r) => {
-      return r.tipo === 'entrada' ? acc + r.valor : acc - r.valor;
-    }, 0);
-  }, [data.historico]);
-
   const [isSyncing, setIsSyncing] = useState(false);
 
   const metaProgress = useMemo(() => {
@@ -519,7 +577,7 @@ export default function App() {
     const dateStr = selectedDate ? `${selectedDate}T${timeStr}` : now.toISOString();
 
     const newRecord: HistoryRecord = {
-      id: generateId() as any,
+      id: generateId(),
       descricao,
       valor,
       tipo: 'entrada',
@@ -611,68 +669,125 @@ export default function App() {
 
   const addCatalogService = async () => {
     const newService = { id: generateId(), nome: 'Novo Serviço', valor: 0 };
-    // Atualização do estado instantânea (Gatilho de re-renderização)
     setData(prev => ({ ...prev, servicos: [...prev.servicos, newService] }));
     
     try {
-      // Simulação de API
       await new Promise((resolve, reject) => {
         setTimeout(() => {
-          if (Math.random() < 0.05) reject(new Error('API Error')); // 5% chance de falha
+          if (Math.random() < 0.05) reject(new Error('API Error'));
           else resolve(true);
         }, 300);
       });
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 2000);
     } catch (error) {
-      // Rollback em caso de falha
-      setData(prev => ({ ...prev, servicos: prev.servicos.slice(0, -1) }));
+      setData(prev => ({ ...prev, servicos: prev.servicos.filter(s => s.id !== newService.id) }));
       console.error('Erro ao adicionar serviço:', error);
     }
   };
 
-  const deleteCatalogService = async (index: number) => {
-    const serviceToDelete = data.servicos[index];
-    // Atualização do estado instantânea (Gatilho de re-renderização)
-    setData(prev => ({ ...prev, servicos: prev.servicos.filter((_, i) => i !== index) }));
+  const deleteCatalogService = async (id: string) => {
+    const serviceToDelete = data.servicos.find(s => s.id === id);
+    if (!serviceToDelete) return;
+
+    openConfirmation(
+      'Excluir Serviço',
+      `Tem certeza que deseja excluir o serviço "${serviceToDelete.nome}"? Esta ação removerá o item do catálogo.`,
+      async () => {
+        setData(prev => ({ ...prev, servicos: prev.servicos.filter(s => s.id !== id) }));
+        
+        try {
+          await new Promise((resolve, reject) => {
+            setTimeout(() => {
+              if (Math.random() < 0.05) reject(new Error('API Error'));
+              else resolve(true);
+            }, 300);
+          });
+          setShowSuccessToast(true);
+          setTimeout(() => setShowSuccessToast(false), 2000);
+        } catch (error) {
+          setData(prev => ({ ...prev, servicos: [...prev.servicos, serviceToDelete] }));
+          console.error('Erro ao excluir serviço:', error);
+        }
+      }
+    );
+  };
+
+  const addCatalogProduct = async () => {
+    const newProduct = { id: generateId(), nome: 'Novo Produto', valor: 0 };
+    setData(prev => ({ ...prev, produtos: [...prev.produtos, newProduct] }));
     
     try {
-      // Simulação de API
       await new Promise((resolve, reject) => {
         setTimeout(() => {
-          if (Math.random() < 0.05) reject(new Error('API Error')); // 5% chance de falha
+          if (Math.random() < 0.05) reject(new Error('API Error'));
           else resolve(true);
         }, 300);
       });
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 2000);
     } catch (error) {
-      // Rollback em caso de falha
-      setData(prev => {
-        const newServicos = [...prev.servicos];
-        newServicos.splice(index, 0, serviceToDelete);
-        return { ...prev, servicos: newServicos };
-      });
-      console.error('Erro ao excluir serviço:', error);
+      setData(prev => ({ ...prev, produtos: prev.produtos.filter(p => p.id !== newProduct.id) }));
+      console.error('Erro ao adicionar produto:', error);
     }
   };
 
-  const deleteRecord = (id: number) => {
-    const record = data.historico.find(r => r.id === id);
-    if (!record) return;
+  const deleteCatalogProduct = async (id: string) => {
+    const productToDelete = data.produtos.find(p => p.id === id);
+    if (!productToDelete) return;
 
-    setData(prev => ({
-      ...prev,
-      saldo: record.tipo === 'entrada' ? prev.saldo - record.valor : prev.saldo + record.valor,
-      historico: prev.historico.filter(r => r.id !== id)
-    }));
+    openConfirmation(
+      'Excluir Produto',
+      `Tem certeza que deseja excluir o produto "${productToDelete.nome}"? Esta ação removerá o item do catálogo.`,
+      async () => {
+        setData(prev => ({ ...prev, produtos: prev.produtos.filter(p => p.id !== id) }));
+        
+        try {
+          await new Promise((resolve, reject) => {
+            setTimeout(() => {
+              if (Math.random() < 0.05) reject(new Error('API Error'));
+              else resolve(true);
+            }, 300);
+          });
+          setShowSuccessToast(true);
+          setTimeout(() => setShowSuccessToast(false), 2000);
+        } catch (error) {
+          setData(prev => ({ ...prev, produtos: [...prev.produtos, productToDelete] }));
+          console.error('Erro ao excluir produto:', error);
+        }
+      }
+    );
+  };
+
+  const deleteRecord = (id: string) => {
+    setData(prev => {
+      const record = prev.historico.find(r => r.id === id);
+      if (!record) return prev;
+
+      return {
+        ...prev,
+        saldo: record.tipo === 'entrada' ? prev.saldo - record.valor : prev.saldo + record.valor,
+        historico: prev.historico.filter(r => r.id !== id)
+      };
+    });
   };
 
   const updateRecord = (updatedRecord: HistoryRecord) => {
-    const oldRecord = data.historico.find(r => r.id === updatedRecord.id);
-    if (!oldRecord) return;
-
     setData(prev => {
+      const oldRecord = prev.historico.find(r => r.id === updatedRecord.id);
+      if (!oldRecord) return prev;
+
+      // Save edit history
+      const historyEntry = {
+        timestamp: new Date().toISOString(),
+        oldData: { ...oldRecord, editHistory: undefined }
+      };
+      
+      const recordWithHistory = {
+        ...updatedRecord,
+        editHistory: [...(oldRecord.editHistory || []), historyEntry]
+      };
+
       // Revert old record impact on balance
       let newSaldo = oldRecord.tipo === 'entrada' ? prev.saldo - oldRecord.valor : prev.saldo + oldRecord.valor;
       // Apply new record impact on balance
@@ -681,10 +796,35 @@ export default function App() {
       return {
         ...prev,
         saldo: newSaldo,
-        historico: prev.historico.map(r => r.id === updatedRecord.id ? updatedRecord : r)
+        historico: prev.historico.map(r => r.id === updatedRecord.id ? recordWithHistory : r)
       };
     });
     setEditingRecord(null);
+  };
+
+  const revertRecord = (recordId: string, historyIndex: number) => {
+    setData(prev => {
+      const record = prev.historico.find(r => r.id === recordId);
+      if (!record || !record.editHistory || !record.editHistory[historyIndex]) return prev;
+
+      const oldData = record.editHistory[historyIndex].oldData;
+      
+      // Impact on balance
+      let newSaldo = record.tipo === 'entrada' ? prev.saldo - record.valor : prev.saldo + record.valor;
+      newSaldo = oldData.tipo === 'entrada' ? newSaldo + (oldData.valor || 0) : newSaldo - (oldData.valor || 0);
+
+      const revertedRecord = {
+        ...record,
+        ...oldData,
+        editHistory: record.editHistory.slice(0, historyIndex)
+      };
+
+      return {
+        ...prev,
+        saldo: newSaldo,
+        historico: prev.historico.map(r => r.id === recordId ? revertedRecord : r)
+      };
+    });
   };
 
   if (!isLoggedIn) {
@@ -693,22 +833,37 @@ export default function App() {
 
   return (
     <div className={`min-h-screen transition-colors duration-500 relative overflow-hidden ${darkMode ? 'bg-slate-950 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
+      {isCatalogSelectionModalOpen && (
+        <CatalogSelectionModal
+          isOpen={isCatalogSelectionModalOpen}
+          onClose={() => setIsCatalogSelectionModalOpen(false)}
+          servicos={data.servicos}
+          produtos={data.produtos}
+          onSelect={(item, categoria) => {
+            addRecord(item.valor, item.nome, { nome: 'Cliente Avulso', tel: '' }, undefined, categoria);
+            setIsCatalogSelectionModalOpen(false);
+          }}
+        />
+      )}
+
       {isServiceModalOpen && (
         <ServiceModal
           isOpen={isServiceModalOpen}
           onClose={() => setIsServiceModalOpen(false)}
           onSave={(newService) => {
+            const serviceWithId = { ...newService, id: generateId() };
             setData(prev => ({
               ...prev,
-              servicos: [...prev.servicos, newService],
-              historico: [...prev.historico, {
-                id: Date.now() + Math.random(),
+              saldo: prev.saldo + serviceWithId.valor,
+              servicos: [...prev.servicos, serviceWithId],
+              historico: [{
+                id: generateId(),
                 data: selectedDate ? `${selectedDate}T12:00:00Z` : new Date().toISOString(),
                 tipo: 'entrada',
-                descricao: newService.nome,
-                valor: newService.valor,
-                categoria: 'serviço'
-              }]
+                descricao: serviceWithId.nome,
+                valor: serviceWithId.valor,
+                categoria: 'servico'
+              }, ...prev.historico]
             }));
             setShowSuccessToast(true);
             setTimeout(() => setShowSuccessToast(false), 2000);
@@ -770,6 +925,18 @@ export default function App() {
                       <span className="text-xl opacity-40">,{(totalBalance % 1).toFixed(2).split('.')[1]}</span>
                     </h3>
                   </div>
+
+                  {/* Commissions Display */}
+                  <div className="mt-4 flex gap-4 border-t border-slate-100 pt-3">
+                    <div>
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Comissão Serviços</p>
+                      <p className="text-sm font-black text-emerald-600">{formatCurrency(totalCommissions.servicos)}</p>
+                    </div>
+                    <div className="border-l border-slate-100 pl-4">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Comissão Produtos</p>
+                      <p className="text-sm font-black text-cyan-600">{formatCurrency(totalCommissions.produtos)}</p>
+                    </div>
+                  </div>
                 </div>
                 <div className="absolute top-1/2 -right-6 -translate-y-1/2 opacity-[0.1] rotate-12 group-hover:rotate-0 transition-transform duration-700">
                   <Scissors size={140} strokeWidth={1} className="text-emerald-500" />
@@ -813,7 +980,7 @@ export default function App() {
                   >
                     {(activeTab === 'servicos' ? data.servicos : data.produtos).map((item, i) => (
                       <motion.button
-                        key={`${activeTab}-${item.id}`}
+                        key={`${activeTab}-${item.id || 'no-id'}-${i}`}
                         whileHover={{ scale: 1.02, y: -2 }}
                         whileTap={{ scale: 0.9, rotate: -1 }}
                         onClick={() => {
@@ -907,12 +1074,35 @@ export default function App() {
                         </div>
                       ))
                     ) : aiInsights.length > 0 ? (
-                      aiInsights.map((insight, i) => (
-                        <div key={`insight-${insight.title}-${i}`} className="space-y-2">
-                          <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{insight.title}</h4>
-                          <p className="text-xs text-slate-500 leading-relaxed">{insight.description}</p>
+                      <div className="col-span-full space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {aiInsights.map((insight, i) => (
+                            <div key={`insight-${insight.title}-${i}`} className="space-y-2">
+                              <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{insight.title}</h4>
+                              <p className="text-xs text-slate-500 leading-relaxed">{insight.description}</p>
+                            </div>
+                          ))}
                         </div>
-                      ))
+                        
+                        {strategicPrompt && (
+                          <div className="mt-6 p-5 bg-indigo-50 border border-indigo-100 rounded-[24px] relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
+                              <Sparkles size={40} className="text-indigo-600" />
+                            </div>
+                            <h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                              <Sparkles size={12} />
+                              Prompt Estratégico de Execução
+                            </h4>
+                            <p className="text-sm font-medium text-indigo-900 leading-relaxed italic">
+                              "{strategicPrompt}"
+                            </p>
+                            <div className="mt-4 flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
+                              <div className="w-1 h-1 bg-indigo-400 rounded-full" />
+                              Siga esta instrução para otimizar seus resultados hoje
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <div className="col-span-3 flex flex-col items-center justify-center gap-2 text-center">
                         <p className="text-xs text-slate-400 italic">Nenhum insight disponível no momento.</p>
@@ -1001,12 +1191,14 @@ export default function App() {
           )}
 
           {/* FAB */}
-          <button
+          <motion.button
+            whileHover={{ scale: 1.1, rotate: 5 }}
+            whileTap={{ scale: 0.9 }}
             onClick={() => setShowMetricsDrawer(true)}
             className="fixed bottom-6 right-6 p-4 bg-white/70 backdrop-blur-xl border border-white/20 rounded-full shadow-lg z-50 text-slate-900"
           >
             <ChartColumn size={24} />
-          </button>
+          </motion.button>
 
           <MetricsDrawer 
             isOpen={showMetricsDrawer} 
@@ -1046,21 +1238,33 @@ export default function App() {
                   setShowSuccessToast(true);
                   setTimeout(() => setShowSuccessToast(false), 2000);
                 }}
-                onAddService={() => setIsServiceModalOpen(true)}
+                onAddService={() => setIsCatalogSelectionModalOpen(true)}
                 onClearMonth={(month, year) => {
-                  setData(prev => ({
-                    ...prev,
-                    historico: prev.historico.filter(r => {
-                      const date = new Date(r.data);
-                      return !(date.getMonth() === month && date.getFullYear() === year);
-                    })
-                  }));
+                  openConfirmation(
+                    'Limpar Agenda do Mês',
+                    'Deseja realmente excluir todos os registros financeiros deste mês? Esta ação não pode ser revertida.',
+                    () => {
+                      setData(prev => ({
+                        ...prev,
+                        historico: prev.historico.filter(r => {
+                          const date = new Date(r.data);
+                          return !(date.getMonth() === month && date.getFullYear() === year);
+                        })
+                      }));
+                    }
+                  );
                 }}
                 onClearDay={(date) => {
-                  setData(prev => ({
-                    ...prev,
-                    historico: prev.historico.filter(r => r.data.split('T')[0] !== date)
-                  }));
+                  openConfirmation(
+                    'Limpar Agenda do Dia',
+                    `Deseja excluir todos os registros do dia ${new Date(date).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).replace('.', '')}?`,
+                    () => {
+                      setData(prev => ({
+                        ...prev,
+                        historico: prev.historico.filter(r => r.data.split('T')[0] !== date)
+                      }));
+                    }
+                  );
                 }}
               />
             </motion.div>
@@ -1414,7 +1618,7 @@ export default function App() {
                               <p className="text-sm font-black text-slate-900 leading-tight tracking-tight">{r.descricao}</p>
                               <div className="flex items-center gap-2 mt-1">
                                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
-                                  {new Date(r.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} • {new Date(r.data).toLocaleDateString('pt-BR')}
+                                  {new Date(r.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} • {new Date(r.data).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).replace('.', '')}
                                   {r.clienteNome && ` • ${r.clienteNome}`}
                                 </p>
                                 {r.recorrencia && (
@@ -1430,18 +1634,45 @@ export default function App() {
                               {r.tipo === 'entrada' ? '+' : '-'} {formatCurrency(r.valor)}
                             </span>
                             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                              {r.editHistory && r.editHistory.length > 0 && (
+                                <motion.button 
+                                  whileHover={{ scale: 1.1, color: '#f59e0b' }}
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={() => {
+                                    const lastEdit = r.editHistory![r.editHistory!.length - 1];
+                                    openConfirmation(
+                                      'Reverter Edição',
+                                      `Deseja reverter para a versão de ${new Date(lastEdit.timestamp).toLocaleString('pt-BR')}?\n\nAnterior: ${lastEdit.oldData.descricao} (€${lastEdit.oldData.valor})`,
+                                      () => revertRecord(r.id, r.editHistory!.length - 1),
+                                      'warning'
+                                    );
+                                  }}
+                                  className="p-2 text-slate-300 transition-all bg-white rounded-xl shadow-sm"
+                                  title="Ver Histórico / Reverter"
+                                >
+                                  <History size={14} />
+                                </motion.button>
+                              )}
                               <button 
                                 onClick={() => setEditingRecord(r)}
                                 className="p-2 text-slate-300 hover:text-indigo-500 transition-all bg-white rounded-xl shadow-sm"
                               >
                                 <Pencil size={14} />
                               </button>
-                              <button 
-                                onClick={() => deleteRecord(r.id)}
-                                className="p-2 text-slate-300 hover:text-red-500 transition-all bg-white rounded-xl shadow-sm"
+                              <motion.button 
+                                whileHover={{ scale: 1.1, color: '#ef4444' }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => {
+                                  openConfirmation(
+                                    'Excluir Registro',
+                                    'Deseja realmente excluir este registro financeiro?',
+                                    () => deleteRecord(r.id)
+                                  );
+                                }}
+                                className="p-2 text-slate-300 transition-all bg-white rounded-xl shadow-sm"
                               >
                                 <Trash2 size={14} />
-                              </button>
+                              </motion.button>
                             </div>
                           </div>
                         </motion.div>
@@ -1471,13 +1702,15 @@ export default function App() {
 
       {/* Mini FAB para Metas */}
       {isLoggedIn && mainTab === 'inicio' && (
-        <button
+        <motion.button
+          whileHover={{ scale: 1.1, rotate: -10 }}
+          whileTap={{ scale: 0.9 }}
           onClick={() => setShowPerformancePanel(true)}
-          className="fixed bottom-24 right-6 w-12 h-12 bg-emerald-500 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-emerald-600 hover:scale-105 transition-all z-40"
+          className="fixed bottom-24 right-6 w-12 h-12 bg-emerald-500 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-emerald-600 transition-all z-40"
           aria-label="Ver Metas e Performance"
         >
           <Target size={20} />
-        </button>
+        </motion.button>
       )}
 
       {/* Bottom Navigation Integrada */}
@@ -1748,7 +1981,7 @@ export default function App() {
                       </div>
                       <div className="space-y-2">
                         {data.servicos.map((s, i) => (
-                          <div key={s.id} className="flex items-center gap-2 p-3 bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-emerald-500/30 transition-all">
+                          <div key={`servico-${s.id || 'no-id'}-${i}`} className="flex items-center gap-2 p-3 bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-emerald-500/30 transition-all overflow-hidden">
                             <input 
                               type="text" 
                               value={s.nome}
@@ -1757,9 +1990,9 @@ export default function App() {
                                 newServicos[i].nome = e.target.value;
                                 setData(prev => ({ ...prev, servicos: newServicos }));
                               }}
-                              className="flex-1 p-1 rounded-lg bg-transparent font-black text-xs text-slate-900 outline-none"
+                              className="flex-1 min-w-0 p-1 rounded-lg bg-transparent font-black text-xs text-slate-900 outline-none"
                             />
-                            <div className="flex items-center bg-slate-50 rounded-lg px-2 border border-slate-100">
+                            <div className="flex items-center bg-slate-50 rounded-lg px-2 border border-slate-100 shrink-0">
                               <span className="text-[10px] font-black text-slate-400 mr-0.5">€</span>
                               <input 
                                 type="number" 
@@ -1773,12 +2006,12 @@ export default function App() {
                                     return { ...prev, servicos: newServicos };
                                   });
                                 }}
-                                className="w-12 p-1 bg-transparent font-black text-xs text-emerald-500 outline-none text-right"
+                                className="w-10 p-1 bg-transparent font-black text-xs text-emerald-500 outline-none text-right"
                               />
                             </div>
                             <button 
-                              onClick={() => deleteCatalogService(i)}
-                              className="p-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                              onClick={() => deleteCatalogService(s.id)}
+                              className="p-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all shrink-0"
                             >
                               <Trash2 size={16} />
                             </button>
@@ -1787,7 +2020,7 @@ export default function App() {
                       </div>
                       <button 
                         onClick={addCatalogService}
-                        className="flex items-center justify-center gap-2 w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-black text-[10px] hover:border-emerald-500/30 hover:text-emerald-500 transition-all uppercase tracking-widest"
+                        className="flex items-center justify-center gap-2 w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-black text-[10px] hover:border-emerald-500/30 hover:text-emerald-500 hover:scale-[1.01] active:scale-[0.98] transition-all uppercase tracking-widest"
                       >
                         <Plus size={16} /> Adicionar Serviço
                       </button>
@@ -1801,7 +2034,7 @@ export default function App() {
                       </div>
                       <div className="space-y-2">
                         {data.produtos.map((p, i) => (
-                          <div key={p.id} className="flex items-center gap-2 p-3 bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-cyan-500/30 transition-all">
+                          <div key={`produto-${p.id || 'no-id'}-${i}`} className="flex items-center gap-2 p-3 bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-cyan-500/30 transition-all overflow-hidden">
                             <input 
                               type="text" 
                               value={p.nome}
@@ -1810,9 +2043,9 @@ export default function App() {
                                 newProdutos[i].nome = e.target.value;
                                 setData(prev => ({ ...prev, produtos: newProdutos }));
                               }}
-                              className="flex-1 p-1 rounded-lg bg-transparent font-black text-xs text-slate-900 outline-none"
+                              className="flex-1 min-w-0 p-1 rounded-lg bg-transparent font-black text-xs text-slate-900 outline-none"
                             />
-                            <div className="flex items-center bg-slate-50 rounded-lg px-2 border border-slate-100">
+                            <div className="flex items-center bg-slate-50 rounded-lg px-2 border border-slate-100 shrink-0">
                               <span className="text-[10px] font-black text-slate-400 mr-0.5">€</span>
                               <input 
                                 type="number" 
@@ -1824,12 +2057,12 @@ export default function App() {
                                   newProdutos[i].valor = val;
                                   setData(prev => ({ ...prev, produtos: newProdutos }));
                                 }}
-                                className="w-12 p-1 bg-transparent font-black text-xs text-cyan-500 outline-none text-right"
+                                className="w-10 p-1 bg-transparent font-black text-xs text-cyan-500 outline-none text-right"
                               />
                             </div>
                             <button 
-                              onClick={() => setData(prev => ({ ...prev, produtos: prev.produtos.filter((_, idx) => idx !== i) }))}
-                              className="p-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                              onClick={() => deleteCatalogProduct(p.id)}
+                              className="p-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all shrink-0"
                             >
                               <Trash2 size={16} />
                             </button>
@@ -1837,8 +2070,8 @@ export default function App() {
                         ))}
                       </div>
                       <button 
-                        onClick={() => setData(prev => ({ ...prev, produtos: [...prev.produtos, { nome: 'Novo Produto', valor: 0 }] }))}
-                        className="flex items-center justify-center gap-2 w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-black text-[10px] hover:border-cyan-500/30 hover:text-cyan-500 transition-all uppercase tracking-widest"
+                        onClick={addCatalogProduct}
+                        className="flex items-center justify-center gap-2 w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-black text-[10px] hover:border-cyan-500/30 hover:text-cyan-500 hover:scale-[1.01] active:scale-[0.98] transition-all uppercase tracking-widest"
                       >
                         <Plus size={16} /> Adicionar Produto
                       </button>
@@ -1987,7 +2220,7 @@ export default function App() {
                       disabled={!newClient.nome}
                       onClick={() => {
                         const contact: Contact = {
-                          id: generateId() as any,
+                          id: generateId(),
                           nome: newClient.nome,
                           telefone: newClient.tel,
                           criadoEm: Date.now(),
@@ -2281,6 +2514,15 @@ export default function App() {
           accept="image/*"
           onChange={handlePhotoUpload}
         />
+
+        <ConfirmationModal
+          isOpen={confirmation.isOpen}
+          onClose={() => setConfirmation(prev => ({ ...prev, isOpen: false }))}
+          onConfirm={confirmation.onConfirm}
+          title={confirmation.title}
+          message={confirmation.message}
+          variant={confirmation.variant}
+        />
     </div>
   );
 }
@@ -2288,15 +2530,23 @@ export default function App() {
 // --- Subcomponents ---
 
 const NavButton = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
-  <button 
+  <motion.button 
+    whileHover={{ scale: 1.1 }}
+    whileTap={{ scale: 0.9 }}
     onClick={onClick}
     aria-label={label}
-    className={`flex flex-col items-center justify-center w-12 h-12 rounded-full transition-all relative group ${
-      active ? 'bg-slate-900 text-white shadow-md scale-110' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-900'
-    } active:scale-95`}
+    className={`flex items-center justify-center w-12 h-12 rounded-full transition-all relative group ${
+      active ? 'bg-slate-900 text-white shadow-lg ring-4 ring-slate-900/10' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-900'
+    }`}
   >
     {icon}
-  </button>
+    {active && (
+      <motion.div 
+        layoutId="nav-active"
+        className="absolute -bottom-1 w-1 h-1 bg-white rounded-full"
+      />
+    )}
+  </motion.button>
 );
 
 const CalendarGrid = ({ data, selectedDate, onSelectDate, onShowFolgas, onClearMonth, onClearDay, onSetFolgaEspecifica, onAddService }: { data: AppData, selectedDate: string | null, onSelectDate: (d: string | null) => void, onShowFolgas: () => void, onClearMonth: (month: number, year: number) => void, onClearDay: (date: string) => void, onSetFolgaEspecifica: (date: string, periodo: 'completo' | 'manha' | 'tarde' | null) => void, onAddService: () => void }) => {
@@ -2487,6 +2737,9 @@ const CalendarGrid = ({ data, selectedDate, onSelectDate, onShowFolgas, onClearM
             
             const isToday = getLocalISO(new Date()) === dateKey;
 
+            // Eventos Especiais
+            const evento = data.eventosEspeciais?.find(e => e.data === dateKey);
+
             return (
               <div key={day} className="relative">
                 <button
@@ -2505,6 +2758,7 @@ const CalendarGrid = ({ data, selectedDate, onSelectDate, onShowFolgas, onClearM
                     ${isSelected && !isMarkingFolga ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_8px_20px_rgba(16,185,129,0.1)]' : 
                       isToday ? 'border-indigo-500/50 bg-indigo-500/5' : 
                       folga ? 'border-amber-200 bg-amber-50/50' :
+                      evento ? `border-${evento.cor}-200 bg-${evento.cor}-50/50` :
                       'border-transparent bg-slate-50 hover:bg-slate-100'}
                     ${folga?.periodo === 'completo' ? 'opacity-60 grayscale-[0.3]' : ''}
                     ${isMarkingFolga ? 'ring-2 ring-amber-500/20 hover:ring-amber-500/50' : ''}
@@ -2515,11 +2769,18 @@ const CalendarGrid = ({ data, selectedDate, onSelectDate, onShowFolgas, onClearM
                      {!stats && folga?.periodo === 'completo' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
                      {!stats && folga?.periodo === 'manha' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
                      {!stats && folga?.periodo === 'tarde' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
+                     {evento && <div className={`w-1.5 h-1.5 rounded-full bg-${evento.cor}-500`} />}
                   </div>
 
                   {folga && (
                     <div className="absolute bottom-1.5 text-amber-500 opacity-40">
                       <Coffee size={10} />
+                    </div>
+                  )}
+
+                  {evento && (
+                    <div className={`absolute bottom-1.5 text-${evento.cor}-500 opacity-60`}>
+                      <Sparkles size={10} />
                     </div>
                   )}
 
