@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "Service": {
+      "title": "Service",
+      "description": "A service offered by the barber.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "valor": { "type": "number" }
+      },
+      "required": ["id", "nome", "valor"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A product sold by the barber.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "valor": { "type": "number" }
+      },
+      "required": ["id", "nome", "valor"]
+    },
+    "Contact": {
+      "title": "Contact",
+      "description": "A customer contact.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "telefone": { "type": "string" },
+        "criadoEm": { "type": "number" },
+        "atualizadoEm": { "type": "number" },
+        "recorrenciaPadrao": { "type": "number" }
+      },
+      "required": ["id", "nome", "telefone", "criadoEm", "atualizadoEm"]
+    },
+    "HistoryRecord": {
+      "title": "HistoryRecord",
+      "description": "A record of a transaction.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "descricao": { "type": "string" },
+        "valor": { "type": "number" },
+        "tipo": { "type": "string", "enum": ["entrada", "saida"] },
+        "data": { "type": "string", "format": "date-time" },
+        "clienteNome": { "type": "string" },
+        "clienteTelefone": { "type": "string" },
+        "recorrencia": { "type": "number" },
+        "categoria": { "type": "string", "enum": ["servico", "produto"] }
+      },
+      "required": ["id", "descricao", "valor", "tipo", "data"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/services/{serviceId}": {
+      "schema": { "$ref": "Service" },
+      "description": "Services for a specific user."
+    },
+    "/users/{userId}/products/{productId}": {
+      "schema": { "$ref": "Product" },
+      "description": "Products for a specific user."
+    },
+    "/users/{userId}/contacts/{contactId}": {
+      "schema": { "$ref": "Contact" },
+      "description": "Contacts for a specific user."
+    },
+    "/users/{userId}/history/{recordId}": {
+      "schema": { "$ref": "HistoryRecord" },
+      "description": "History records for a specific user."
+    }
+  }
+}

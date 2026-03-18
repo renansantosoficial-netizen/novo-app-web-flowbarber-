@@ -79,9 +79,9 @@ export const CatalogSelectionModal = ({ isOpen, onClose, servicos, produtos, onS
         {/* List */}
         <div className="flex-1 overflow-y-auto p-6 space-y-3 scrollbar-hide">
           {filteredItems.length > 0 ? (
-            filteredItems.map((item, i) => (
+            filteredItems.map((item) => (
               <button
-                key={`${activeTab}-${item.id || 'no-id'}-${i}`}
+                key={item.id}
                 onClick={() => onSelect(item, activeTab === 'servicos' ? 'servico' : 'produto')}
                 className="w-full flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl hover:border-emerald-500/30 hover:shadow-md transition-all group text-left"
               >

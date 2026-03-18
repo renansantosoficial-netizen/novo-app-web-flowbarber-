@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -78,10 +78,11 @@ export async function getAIInsights(data: any) {
       `;
 
       const response = await retryWithBackoff(() => ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3.1-pro-preview",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
         },
       }));
 
@@ -114,30 +115,48 @@ export async function getMarketTrends() {
   const request = (async () => {
     try {
       const prompt = `
-        Quais são as 3 principais tendências de barbearia premium e cuidados masculinos para 2026 no Brasil? Forneça insights curtos e links de referência se possível.
+        Quais são as 3 principais tendências de barbearia premium e cuidados masculinos para o momento atual?
         
-        Responda em formato JSON:
+        Responda APENAS com um bloco JSON válido (sem \`\`\`json ou marcação markdown), no seguinte formato:
         {
           "trends": [
-            { "title": "Título", "description": "Descrição curta", "url": "URL de referência" }
+            { "title": "Título", "description": "Descrição curta", "url": "URL de referência (use os links da pesquisa)" }
           ]
         }
       `;
       
       const response = await retryWithBackoff(() => ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3.1-pro-preview",
         contents: prompt,
         config: {
-          responseMimeType: "application/json",
+          tools: [{ googleSearch: {} }],
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
         }
       }));
 
-      const result = JSON.parse(response.text || "{}");
+      let text = response.text || "{}";
+      // Remove markdown code blocks if the model still outputs them
+      text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      
+      const result = JSON.parse(text);
+      
+      // Extract URLs from grounding chunks if available and not present in the result
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      if (chunks && result.trends) {
+        result.trends.forEach((trend: any, index: number) => {
+          if (!trend.url || trend.url === "URL de referência") {
+            const chunk = chunks[index] || chunks[0];
+            if (chunk?.web?.uri) {
+              trend.url = chunk.web.uri;
+            }
+          }
+        });
+      }
+
       setCachedData(cacheKey, result);
       return result;
     } catch (error: any) {
       console.error("Error fetching market trends:", error);
-      // Cache failure for 1 hour to prevent hammering the API
       if (error?.status === 429) {
         setCachedData(cacheKey, { trends: [], error: "Quota excedida. Tente novamente mais tarde." });
       }
