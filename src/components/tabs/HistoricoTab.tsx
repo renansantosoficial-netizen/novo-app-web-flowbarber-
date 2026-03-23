@@ -1,17 +1,15 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChartColumn, History, X, FileText, Download, Plus, Trash2, RefreshCw, Pencil } from 'lucide-react';
+import { ChartColumn, History, X, FileText, Download, Plus, Trash2, RefreshCw, Pencil, Search, Users, RotateCcw } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, BarChart, Bar } from 'recharts';
 import { useFlowBarber } from '../../context/FlowBarberContext';
 import { Card } from '../Card';
 
 interface HistoricoTabProps {
   exportToCSV: (data: any[], filename: string, isHistory?: boolean) => void;
-  revertRecord: (recordId: string, historyIndex: number) => void;
-  deleteRecord: (id: string) => void;
 }
 
-export default function HistoricoTab({ exportToCSV, revertRecord, deleteRecord }: HistoricoTabProps) {
+export default function HistoricoTab({ exportToCSV }: HistoricoTabProps) {
   const {
     data,
     chartData,
@@ -19,12 +17,20 @@ export default function HistoricoTab({ exportToCSV, revertRecord, deleteRecord }
     historicoStats,
     historyDateRange,
     setHistoryDateRange,
+    historySearch,
+    setHistorySearch,
+    historyClientFilter,
+    setHistoryClientFilter,
+    historyTypeFilter,
+    setHistoryTypeFilter,
     setShowReportModal,
     filteredHistorico,
     visibleRecords,
     setVisibleRecords,
     setEditingRecord,
-    openConfirmation
+    openConfirmation,
+    revertRecord,
+    deleteRecord
   } = useFlowBarber();
 
   return (
@@ -93,67 +99,110 @@ export default function HistoricoTab({ exportToCSV, revertRecord, deleteRecord }
       </Card>
 
       <Card>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-2xl">
-              <History size={20} />
-            </div>
-            <div>
-              <h3 className="text-lg font-black text-slate-900 tracking-tight">Histórico</h3>
-              <div className="flex gap-2 mt-0.5">
-                <span className="text-[8px] font-black text-slate-500 uppercase bg-slate-100 px-1.5 py-0.5 rounded-md">
-                  {data.historico.length} Registros
-                </span>
-                <span className="text-[8px] font-black text-indigo-500 uppercase bg-indigo-50 px-1.5 py-0.5 rounded-md">
-                  {historicoStats.servicos} Serviços
-                </span>
-                <span className="text-[8px] font-black text-cyan-500 uppercase bg-cyan-50 px-1.5 py-0.5 rounded-md">
-                  {historicoStats.produtos} Produtos
-                </span>
+        <div className="flex flex-col gap-6 mb-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-2xl">
+                <History size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900 tracking-tight">Histórico</h3>
+                <div className="flex gap-2 mt-0.5">
+                  <span className="text-[8px] font-black text-slate-500 uppercase bg-slate-100 px-1.5 py-0.5 rounded-md">
+                    {data.historico.length} Registros
+                  </span>
+                  <span className="text-[8px] font-black text-indigo-500 uppercase bg-indigo-50 px-1.5 py-0.5 rounded-md">
+                    {historicoStats.servicos} Serviços
+                  </span>
+                  <span className="text-[8px] font-black text-cyan-500 uppercase bg-cyan-50 px-1.5 py-0.5 rounded-md">
+                    {historicoStats.produtos} Produtos
+                  </span>
+                </div>
               </div>
             </div>
+            
+            <div className="flex items-center gap-2 flex-wrap">
+              <button 
+                onClick={() => setShowReportModal(true)}
+                className="p-2 text-slate-400 hover:text-emerald-500 transition-all"
+                title="Análise de Faturação e Relatórios"
+              >
+                <FileText size={20} />
+              </button>
+              <button 
+                onClick={() => exportToCSV(data.historico, 'historico_completo.csv', true)}
+                className="p-2 text-slate-400 hover:text-emerald-500 transition-all"
+                title="Exportar Histórico Completo"
+              >
+                <Download size={20} />
+              </button>
+            </div>
           </div>
-          
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-2 mr-2">
+
+          {/* Filtros e Busca */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
-                type="date" 
-                value={historyDateRange.start || ''}
-                onChange={(e) => setHistoryDateRange(prev => ({ ...prev, start: e.target.value || null }))}
-                className="text-xs font-black text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-emerald-500 transition-all"
+                type="text" 
+                placeholder="Buscar por descrição..."
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+                className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:border-emerald-500 outline-none transition-all"
               />
-              <span className="text-slate-300 font-black text-xs">até</span>
+            </div>
+            <div className="relative">
+              <Users className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
-                type="date" 
-                value={historyDateRange.end || ''}
-                onChange={(e) => setHistoryDateRange(prev => ({ ...prev, end: e.target.value || null }))}
-                className="text-xs font-black text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-emerald-500 transition-all"
+                type="text" 
+                placeholder="Filtrar por cliente..."
+                value={historyClientFilter}
+                onChange={(e) => setHistoryClientFilter(e.target.value)}
+                className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:border-emerald-500 outline-none transition-all"
               />
-              {(historyDateRange.start || historyDateRange.end) && (
+            </div>
+            <div className="flex items-center gap-2">
+              <select 
+                value={historyTypeFilter}
+                onChange={(e) => setHistoryTypeFilter(e.target.value as any)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold focus:border-emerald-500 outline-none transition-all appearance-none"
+              >
+                <option value="todos">Todos os Tipos</option>
+                <option value="servico">Serviços</option>
+                <option value="produto">Produtos</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 w-full">
+                <input 
+                  type="date" 
+                  value={historyDateRange.start || ''}
+                  onChange={(e) => setHistoryDateRange(prev => ({ ...prev, start: e.target.value || null }))}
+                  className="flex-1 text-[10px] font-black text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-2 py-3 outline-none focus:border-emerald-500 transition-all"
+                />
+                <span className="text-slate-300 font-black text-[10px]">/</span>
+                <input 
+                  type="date" 
+                  value={historyDateRange.end || ''}
+                  onChange={(e) => setHistoryDateRange(prev => ({ ...prev, end: e.target.value || null }))}
+                  className="flex-1 text-[10px] font-black text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-2 py-3 outline-none focus:border-emerald-500 transition-all"
+                />
+              </div>
+              {(historyDateRange.start || historyDateRange.end || historySearch || historyClientFilter || historyTypeFilter !== 'todos') && (
                 <button 
-                  onClick={() => setHistoryDateRange({ start: null, end: null })}
-                  className="p-2 text-slate-400 hover:text-red-500 transition-all bg-slate-50 rounded-xl border border-slate-200"
-                  title="Limpar Filtro"
+                  onClick={() => {
+                    setHistoryDateRange({ start: null, end: null });
+                    setHistorySearch('');
+                    setHistoryClientFilter('');
+                    setHistoryTypeFilter('todos');
+                  }}
+                  className="p-3 text-red-500 hover:bg-red-50 transition-all bg-slate-50 rounded-xl border border-slate-100"
+                  title="Limpar Filtros"
                 >
                   <X size={16} />
                 </button>
               )}
             </div>
-
-            <button 
-              onClick={() => setShowReportModal(true)}
-              className="p-2 text-slate-400 hover:text-emerald-500 transition-all"
-              title="Análise de Faturação e Relatórios"
-            >
-              <FileText size={20} />
-            </button>
-            <button 
-              onClick={() => exportToCSV(data.historico, 'historico_completo.csv', true)}
-              className="p-2 text-slate-400 hover:text-emerald-500 transition-all"
-              title="Exportar Histórico Completo"
-            >
-              <Download size={20} />
-            </button>
           </div>
         </div>
 

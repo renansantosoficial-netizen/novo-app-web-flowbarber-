@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
-import { AppData, DEFAULT_DATA, HistoryRecord, Contact, Service, Product } from '../types';
+import { AppData, DEFAULT_DATA, HistoryRecord, Contact, Service, Product, Expense } from '../types';
 import { getAIInsights, getMarketTrends } from '../services/geminiService';
 
 interface FlowBarberContextType {
@@ -31,6 +31,12 @@ interface FlowBarberContextType {
   setSelectedDate: React.Dispatch<React.SetStateAction<string | null>>;
   historyDateRange: { start: string | null, end: string | null };
   setHistoryDateRange: React.Dispatch<React.SetStateAction<{ start: string | null, end: string | null }>>;
+  historySearch: string;
+  setHistorySearch: React.Dispatch<React.SetStateAction<string>>;
+  historyClientFilter: string;
+  setHistoryClientFilter: React.Dispatch<React.SetStateAction<string>>;
+  historyTypeFilter: 'todos' | 'servico' | 'produto';
+  setHistoryTypeFilter: React.Dispatch<React.SetStateAction<'todos' | 'servico' | 'produto'>>;
   showMetricsDrawer: boolean;
   setShowMetricsDrawer: React.Dispatch<React.SetStateAction<boolean>>;
   showReportModal: boolean;
@@ -95,6 +101,8 @@ interface FlowBarberContextType {
   deleteRecord: (id: string) => void;
   updateRecord: (updatedRecord: HistoryRecord) => void;
   revertRecord: (recordId: string, historyIndex: number) => void;
+  addExpense: (expense: Omit<Expense, 'id'>) => void;
+  deleteExpense: (id: string) => void;
   openConfirmation: (title: string, message: string, onConfirm: () => void, variant?: 'danger' | 'warning' | 'info') => void;
 }
 
@@ -193,6 +201,9 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [activeTab, setActiveTab] = useState<'servicos' | 'produtos'>('servicos');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [historyDateRange, setHistoryDateRange] = useState<{ start: string | null, end: string | null }>({ start: null, end: null });
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyClientFilter, setHistoryClientFilter] = useState('');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<'todos' | 'servico' | 'produto'>('todos');
   const [showMetricsDrawer, setShowMetricsDrawer] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showPerformancePanel, setShowPerformancePanel] = useState(false);
@@ -279,9 +290,14 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (historyDateRange.start && rDate < historyDateRange.start) return false;
       if (historyDateRange.end && rDate > historyDateRange.end) return false;
       if (!historyDateRange.start && !historyDateRange.end && selectedDate && rDate !== selectedDate) return false;
+      
+      if (historySearch && !r.descricao.toLowerCase().includes(historySearch.toLowerCase())) return false;
+      if (historyClientFilter && (!r.clienteNome || !r.clienteNome.toLowerCase().includes(historyClientFilter.toLowerCase()))) return false;
+      if (historyTypeFilter !== 'todos' && r.categoria !== historyTypeFilter) return false;
+      
       return true;
     });
-  }, [data.historico, historyDateRange, selectedDate]);
+  }, [data.historico, historyDateRange, selectedDate, historySearch, historyClientFilter, historyTypeFilter]);
 
   const historicoStats = useMemo(() => {
     let servicos = 0;
@@ -345,10 +361,12 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [data]);
 
   const totalBalance = useMemo(() => {
-    return data.historico.reduce((acc, r) => {
+    const revenue = data.historico.reduce((acc, r) => {
       return r.tipo === 'entrada' ? acc + r.valor : acc - r.valor;
     }, 0);
-  }, [data.historico]);
+    const expenses = data.despesas.reduce((acc, e) => acc + e.valor, 0);
+    return revenue - expenses;
+  }, [data.historico, data.despesas]);
 
   const totalCommissions = useMemo(() => {
     return data.historico.reduce((acc, r) => {
@@ -579,12 +597,33 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
+  const addExpense = (expense: Omit<Expense, 'id'>) => {
+    const newExpense: Expense = {
+      ...expense,
+      id: generateId()
+    };
+    setData(prev => ({
+      ...prev,
+      despesas: [newExpense, ...prev.despesas]
+    }));
+    setShowSuccessToast(true);
+    setTimeout(() => setShowSuccessToast(false), 3000);
+  };
+
+  const deleteExpense = (id: string) => {
+    setData(prev => ({
+      ...prev,
+      despesas: prev.despesas.filter(e => e.id !== id)
+    }));
+  };
+
   return (
     <FlowBarberContext.Provider value={{
       data, setData, generateId, formatCurrency, getLocalISO,
       isLoggedIn, setIsLoggedIn, darkMode, setDarkMode, toggleDarkMode,
       mainTab, setMainTab, showSuccessToast, setShowSuccessToast, errorToast, setErrorToast,
       activeTab, setActiveTab, selectedDate, setSelectedDate, historyDateRange, setHistoryDateRange,
+      historySearch, setHistorySearch, historyClientFilter, setHistoryClientFilter, historyTypeFilter, setHistoryTypeFilter,
       showMetricsDrawer, setShowMetricsDrawer, showReportModal, setShowReportModal, showPerformancePanel, setShowPerformancePanel, showSettingsPopup, setShowSettingsPopup,
       isCatalogSelectionModalOpen, setIsCatalogSelectionModalOpen,
       settingsTab, setSettingsTab, showClientPopup, setShowClientPopup, clientSearch, setClientSearch,
@@ -595,7 +634,7 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       loadingAI, setLoadingAI, loadingTrends, setLoadingTrends,
       totalBalance, totalCommissions, monthlyStats, dailyStats, metaProgress, taskProgress, upcomingReturns, chartData,
       filteredHistorico, historicoStats,
-      addRecord, deleteRecord, updateRecord, revertRecord, openConfirmation
+      addRecord, deleteRecord, updateRecord, revertRecord, addExpense, deleteExpense, openConfirmation
     }}>
       {children}
       

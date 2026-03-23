@@ -48,13 +48,25 @@ export interface DayOffConfig {
   periodo: 'completo' | 'manha' | 'tarde';
 }
 
+export interface Expense {
+  id: string;
+  descricao: string;
+  valor: number;
+  categoria: string;
+  tipo: 'fixa' | 'variavel';
+  data: string; // ISO string
+}
+
 export interface AppData {
   saldo: number;
   meta: number;
+  metaDiariaServicos?: number;
+  metaSemanalServicos?: number;
   historico: HistoryRecord[];
   contatos: Contact[];
   servicos: Service[];
   produtos: Product[];
+  despesas: Expense[];
   percentualGanho: number;
   percentualProdutos: number;
   diasFolga: DayOffConfig[];
@@ -80,6 +92,7 @@ export const DEFAULT_DATA: AppData = {
     { id: "p2", nome: "Óleo de Barba", valor: 45 },
     { id: "p3", nome: "Shampoo", valor: 30 },
   ],
+  despesas: [],
   percentualGanho: 50,
   percentualProdutos: 10,
   diasFolga: [],

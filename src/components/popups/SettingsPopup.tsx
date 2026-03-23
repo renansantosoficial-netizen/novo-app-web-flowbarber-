@@ -69,7 +69,7 @@ export default function SettingsPopup({
         {settingsTab === 'metas' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Valor da Meta (€)</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Valor da Meta Financeira (€)</label>
                 <input 
                   type="number" 
                   defaultValue={data.meta}
@@ -86,7 +86,35 @@ export default function SettingsPopup({
                   className="w-full p-5 rounded-[32px] bg-slate-50 border border-slate-100 focus:border-emerald-500 focus:ring-8 focus:ring-emerald-500/5 outline-none transition-all font-black text-2xl text-slate-900 text-center"
                 />
             </div>
-            <button onClick={() => setShowSettingsPopup(false)} className="btn-primary w-full py-5 rounded-[32px] uppercase tracking-widest text-xs font-black">Salvar Meta</button>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Meta Diária (Serviços)</label>
+                <input 
+                  type="number" 
+                  defaultValue={data.metaDiariaServicos || 0}
+                  onBlur={(e) => {
+                    const val = Number(e.target.value);
+                    setData(prev => ({ ...prev, metaDiariaServicos: val }));
+                  }}
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 focus:border-emerald-500 outline-none transition-all font-black text-lg text-slate-900 text-center"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Meta Semanal (Serviços)</label>
+                <input 
+                  type="number" 
+                  defaultValue={data.metaSemanalServicos || 0}
+                  onBlur={(e) => {
+                    const val = Number(e.target.value);
+                    setData(prev => ({ ...prev, metaSemanalServicos: val }));
+                  }}
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 focus:border-emerald-500 outline-none transition-all font-black text-lg text-slate-900 text-center"
+                />
+              </div>
+            </div>
+
+            <button onClick={() => setShowSettingsPopup(false)} className="btn-primary w-full py-5 rounded-[32px] uppercase tracking-widest text-xs font-black">Salvar Metas</button>
           </div>
         )}
 

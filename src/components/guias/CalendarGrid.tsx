@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeftIcon, ChevronRightIcon, Calendar, DollarSign, 
-  Briefcase, Coffee, Moon, Trash2, Sparkles, Scissors, RefreshCw, X
+  Briefcase, Coffee, Moon, Trash2, Sparkles, Scissors, RefreshCw, X, Plus
 } from 'lucide-react';
 import { AppData } from '../../types';
 import { useFlowBarber } from '../../context/FlowBarberContext';
@@ -27,6 +27,7 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [isMarkingFolga, setIsMarkingFolga] = useState(false);
   const [folgaPopupDate, setFolgaPopupDate] = useState<string | null>(null);
+  const [showDayDetailModal, setShowDayDetailModal] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
 
   const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
@@ -219,11 +220,9 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
                   onClick={() => {
                     if (isMarkingFolga) {
                       setFolgaPopupDate(dateKey);
-                    } else if (folga) {
-                      onSelectDate(isSelected ? null : dateKey);
                     } else {
                       onSelectDate(dateKey);
-                      onAddService();
+                      setShowDayDetailModal(true);
                     }
                   }}
                   className={`
@@ -343,58 +342,105 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
         </div>
       </div>
 
-      {/* Selected Day Details */}
+      {/* Day Detail Modal */}
       <AnimatePresence>
-        {selectedDate && (
-          <motion.div
-            key={`details-${selectedDate}`}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="space-y-3"
-          >
-            <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
-              <h3 className="text-sm font-black text-slate-900">
-                Agenda: {selectedDate.split('-').reverse().join('/')}
-              </h3>
-              <div className="flex gap-2">
-                <div className="px-2 py-1 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                  <span className="text-[10px] font-black text-emerald-500">
-                    {formatCurrency(dailyData[selectedDate]?.total || 0)}
-                  </span>
+        {showDayDetailModal && selectedDate && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Agenda do Dia</h2>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
+                    {selectedDate.split('-').reverse().join('/')}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowDayDetailModal(false)}
+                  className="p-3 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-2xl transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide">
+                <div className="flex items-center justify-between p-4 bg-emerald-50 rounded-3xl border border-emerald-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+                      <DollarSign size={20} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-emerald-600/60 uppercase tracking-widest">Total do Dia</p>
+                      <p className="text-xl font-black text-emerald-600">{formatCurrency(dailyData[selectedDate]?.total || 0)}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowDayDetailModal(false);
+                      onAddService();
+                    }}
+                    className="p-4 bg-emerald-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                  >
+                    <Plus size={16} /> Adicionar
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Registros</h4>
+                  {data.historico
+                    .filter(r => r.data.split('T')[0] === selectedDate)
+                    .map((r) => (
+                      <div key={`historico-modal-${r.id}`} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-emerald-500/30 transition-all">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${r.categoria === 'produto' ? 'bg-emerald-50 text-emerald-500' : 'bg-indigo-50 text-indigo-500'}`}>
+                            {r.categoria === 'produto' ? <DollarSign size={16} /> : <Scissors size={16} />}
+                          </div>
+                          <div className="flex flex-col">
+                            <p className="text-sm font-black text-slate-900 leading-tight">{r.descricao}</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                              {r.clienteNome || 'Cliente não identificado'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-sm font-black text-emerald-500">
+                            {formatCurrency(r.valor)}
+                          </span>
+                          <button 
+                            onClick={() => onClearDay(selectedDate)} // This is a bit broad, but fits the existing API
+                            className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  
+                  {(!dailyData[selectedDate] || dailyData[selectedDate].count === 0) && (
+                    <div className="text-center py-12 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nenhum agendamento para este dia</p>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              {data.historico
-                .filter(r => r.data.split('T')[0] === selectedDate)
-                .map((r) => (
-                  <div key={`historico-popup-${r.id}`} className="flex items-center justify-between p-2.5 bg-white border border-slate-100 rounded-2xl shadow-sm">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`p-1.5 rounded-lg ${r.categoria === 'produto' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-indigo-500/10 text-indigo-500'}`}>
-                        {r.categoria === 'produto' ? <DollarSign size={12} /> : <Scissors size={12} />}
-                      </div>
-                      <div className="flex flex-col">
-                        <p className="text-xs font-black text-slate-900 leading-tight">{r.descricao}</p>
-                        <p className="text-[9px] font-bold text-slate-400">
-                          {r.clienteNome || 'Cliente não identificado'}
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`text-xs font-black text-emerald-500`}>
-                      {formatCurrency(r.valor)}
-                    </span>
-                  </div>
-                ))}
-              
-              {(!dailyData[selectedDate] || dailyData[selectedDate].count === 0) && (
-                <div className="text-center py-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                  <p className="text-[10px] font-bold text-slate-400">Nenhum agendamento para este dia.</p>
-                </div>
-              )}
-            </div>
-          </motion.div>
+              {/* Footer */}
+              <div className="p-8 border-t border-slate-100 bg-slate-50/50">
+                <button
+                  onClick={() => setShowDayDetailModal(false)}
+                  className="w-full py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
