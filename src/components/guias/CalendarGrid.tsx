@@ -14,13 +14,14 @@ interface CalendarGridProps {
   onShowFolgas: () => void;
   onClearMonth: (month: number, year: number) => void;
   onClearDay: (date: string) => void;
+  onDeleteRecord: (id: string) => void;
   onSetFolgaEspecifica: (date: string, periodo: 'completo' | 'manha' | 'tarde' | null) => void;
   onAddService: () => void;
 }
 
 const CalendarGrid: React.FC<CalendarGridProps> = ({ 
   data, selectedDate, onSelectDate, onShowFolgas, onClearMonth, 
-  onClearDay, onSetFolgaEspecifica, onAddService 
+  onClearDay, onDeleteRecord, onSetFolgaEspecifica, onAddService 
 }) => {
   const { formatCurrency, getLocalISO } = useFlowBarber();
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
@@ -30,9 +31,11 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
   const [showDayDetailModal, setShowDayDetailModal] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
 
+  const monthFormatter = useMemo(() => new Intl.DateTimeFormat('pt-BR', { month: 'long' }), []);
+  
   const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const monthName = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date(currentYear, currentMonth));
+  const monthName = useMemo(() => monthFormatter.format(new Date(currentYear, currentMonth)), [currentMonth, currentYear, monthFormatter]);
 
   const monthStats = useMemo(() => {
     const records = data.historico.filter(r => {
@@ -413,7 +416,7 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
                             {formatCurrency(r.valor)}
                           </span>
                           <button 
-                            onClick={() => onClearDay(selectedDate)} // This is a bit broad, but fits the existing API
+                            onClick={() => onDeleteRecord(r.id)}
                             className="p-2 text-slate-300 hover:text-red-500 transition-colors"
                           >
                             <Trash2 size={16} />

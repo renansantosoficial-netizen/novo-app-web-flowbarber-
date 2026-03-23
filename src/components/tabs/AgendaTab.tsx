@@ -13,7 +13,8 @@ export default function AgendaTab() {
     setSettingsTab,
     setShowSuccessToast,
     openConfirmation,
-    setIsCatalogSelectionModalOpen
+    setIsCatalogSelectionModalOpen,
+    deleteRecord
   } = useFlowBarber();
 
   return (
@@ -69,6 +70,13 @@ export default function AgendaTab() {
                 historico: prev.historico.filter(r => r.data.split('T')[0] !== date)
               }));
             }
+          );
+        }}
+        onDeleteRecord={(id) => {
+          openConfirmation(
+            'Excluir Registro',
+            'Deseja realmente excluir este registro? Esta ação não pode ser revertida.',
+            () => deleteRecord(id)
           );
         }}
       />

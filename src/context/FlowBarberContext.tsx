@@ -103,6 +103,10 @@ interface FlowBarberContextType {
   revertRecord: (recordId: string, historyIndex: number) => void;
   addExpense: (expense: Omit<Expense, 'id'>) => void;
   deleteExpense: (id: string) => void;
+  addCatalogService: (service: Omit<Service, 'id'>) => void;
+  deleteCatalogService: (id: string) => void;
+  addCatalogProduct: (product: Omit<Product, 'id'>) => void;
+  deleteCatalogProduct: (id: string) => void;
   openConfirmation: (title: string, message: string, onConfirm: () => void, variant?: 'danger' | 'warning' | 'info') => void;
 }
 
@@ -117,7 +121,7 @@ export const useFlowBarber = () => {
 };
 
 export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const generateId = () => Math.random().toString(36).substr(2, 9);
+  const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   
   const [data, setData] = useState<AppData>(() => {
     const saved = localStorage.getItem('flowBarberData');
@@ -125,37 +129,41 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     try {
       const parsed = JSON.parse(saved);
       
-      const usedHistoricoIds = new Set();
-      const historico = (parsed.historico || DEFAULT_DATA.historico).map((r: any) => {
-        let id = r.id;
-        if (!id || usedHistoricoIds.has(id)) id = generateId();
-        usedHistoricoIds.add(id);
-        return { ...r, id };
-      });
+      const usedIds = new Set<string>();
+      
+      const ensureUniqueId = (id: string | undefined) => {
+        let newId = id || generateId();
+        while (usedIds.has(newId)) {
+          newId = generateId();
+        }
+        usedIds.add(newId);
+        return newId;
+      };
 
-      const usedContatoIds = new Set();
-      const contatos = (parsed.contatos || DEFAULT_DATA.contatos).map((c: any) => {
-        let id = c.id;
-        if (!id || usedContatoIds.has(id)) id = generateId();
-        usedContatoIds.add(id);
-        return { ...c, id };
-      });
+      const historico = (parsed.historico || DEFAULT_DATA.historico).map((r: any) => ({
+        ...r,
+        id: ensureUniqueId(r.id)
+      }));
 
-      const usedServicoIds = new Set();
-      const servicos = (parsed.servicos || DEFAULT_DATA.servicos).map((s: any) => {
-        let id = s.id;
-        if (!id || usedServicoIds.has(id)) id = generateId();
-        usedServicoIds.add(id);
-        return { ...s, id };
-      });
+      const contatos = (parsed.contatos || DEFAULT_DATA.contatos).map((c: any) => ({
+        ...c,
+        id: ensureUniqueId(c.id)
+      }));
 
-      const usedProdutoIds = new Set();
-      const produtos = (parsed.produtos || DEFAULT_DATA.produtos).map((p: any) => {
-        let id = p.id;
-        if (!id || usedProdutoIds.has(id)) id = generateId();
-        usedProdutoIds.add(id);
-        return { ...p, id };
-      });
+      const servicos = (parsed.servicos || DEFAULT_DATA.servicos).map((s: any) => ({
+        ...s,
+        id: ensureUniqueId(s.id)
+      }));
+
+      const produtos = (parsed.produtos || DEFAULT_DATA.produtos).map((p: any) => ({
+        ...p,
+        id: ensureUniqueId(p.id)
+      }));
+
+      const despesas = (parsed.despesas || DEFAULT_DATA.despesas || []).map((e: any) => ({
+        ...e,
+        id: ensureUniqueId(e.id)
+      }));
 
       return {
         ...DEFAULT_DATA,
@@ -164,7 +172,8 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         contatos,
         servicos,
         produtos,
-        diasFolga: (parsed.diasFolga || DEFAULT_DATA.diasFolga).filter((d: any) => d.dia !== 0 && d.dia !== 2),
+        despesas,
+        diasFolga: parsed.diasFolga || DEFAULT_DATA.diasFolga,
         percentualGanho: parsed.percentualGanho ?? DEFAULT_DATA.percentualGanho,
         percentualProdutos: parsed.percentualProdutos ?? DEFAULT_DATA.percentualProdutos,
         saldo: parsed.saldo ?? DEFAULT_DATA.saldo,
@@ -196,6 +205,7 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [mainTab, setMainTab] = useState<'inicio' | 'agenda' | 'analytics' | 'historico' | 'config'>('inicio');
   
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const successToastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [errorToast, setErrorToast] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<'servicos' | 'produtos'>('servicos');
@@ -253,6 +263,12 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       },
       variant
     });
+  };
+
+  const triggerSuccessToast = () => {
+    if (successToastTimeoutRef.current) clearTimeout(successToastTimeoutRef.current);
+    setShowSuccessToast(true);
+    successToastTimeoutRef.current = setTimeout(() => setShowSuccessToast(false), 3000);
   };
 
   useEffect(() => {
@@ -529,8 +545,7 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
     });
 
-    setShowSuccessToast(true);
-    setTimeout(() => setShowSuccessToast(false), 3000);
+    triggerSuccessToast();
   };
 
   const deleteRecord = (id: string) => {
@@ -606,14 +621,45 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ...prev,
       despesas: [newExpense, ...prev.despesas]
     }));
-    setShowSuccessToast(true);
-    setTimeout(() => setShowSuccessToast(false), 3000);
+    triggerSuccessToast();
   };
 
   const deleteExpense = (id: string) => {
     setData(prev => ({
       ...prev,
       despesas: prev.despesas.filter(e => e.id !== id)
+    }));
+  };
+
+  const addCatalogService = (service: Omit<Service, 'id'>) => {
+    const newService: Service = { ...service, id: generateId() };
+    setData(prev => ({
+      ...prev,
+      servicos: [...prev.servicos, newService]
+    }));
+    triggerSuccessToast();
+  };
+
+  const deleteCatalogService = (id: string) => {
+    setData(prev => ({
+      ...prev,
+      servicos: prev.servicos.filter(s => s.id !== id)
+    }));
+  };
+
+  const addCatalogProduct = (product: Omit<Product, 'id'>) => {
+    const newProduct: Product = { ...product, id: generateId() };
+    setData(prev => ({
+      ...prev,
+      produtos: [...prev.produtos, newProduct]
+    }));
+    triggerSuccessToast();
+  };
+
+  const deleteCatalogProduct = (id: string) => {
+    setData(prev => ({
+      ...prev,
+      produtos: prev.produtos.filter(p => p.id !== id)
     }));
   };
 
@@ -634,7 +680,9 @@ export const FlowBarberProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       loadingAI, setLoadingAI, loadingTrends, setLoadingTrends,
       totalBalance, totalCommissions, monthlyStats, dailyStats, metaProgress, taskProgress, upcomingReturns, chartData,
       filteredHistorico, historicoStats,
-      addRecord, deleteRecord, updateRecord, revertRecord, addExpense, deleteExpense, openConfirmation
+      addRecord, deleteRecord, updateRecord, revertRecord, addExpense, deleteExpense,
+      addCatalogService, deleteCatalogService, addCatalogProduct, deleteCatalogProduct,
+      openConfirmation
     }}>
       {children}
       

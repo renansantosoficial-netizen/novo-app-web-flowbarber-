@@ -4,23 +4,13 @@ import { CheckCircle2, Pencil, ChartColumn, Users, X, Plus, Trash2 } from 'lucid
 import { useFlowBarber } from '../../context/FlowBarberContext';
 import { Popup } from '../Popup';
 
-interface SettingsPopupProps {
-  exportToCSV: (data: any[], filename: string, isHistory?: boolean) => void;
-  addCatalogService: () => void;
-  deleteCatalogService: (id: string) => void;
-  addCatalogProduct: () => void;
-  deleteCatalogProduct: (id: string) => void;
-  fileInputRef: React.RefObject<HTMLInputElement>;
-}
-
 export default function SettingsPopup({
   exportToCSV,
-  addCatalogService,
-  deleteCatalogService,
-  addCatalogProduct,
-  deleteCatalogProduct,
   fileInputRef
-}: SettingsPopupProps) {
+}: {
+  exportToCSV: (data: any[], filename: string, isHistory?: boolean) => void;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+}) {
   const {
     data,
     setData,
@@ -28,7 +18,11 @@ export default function SettingsPopup({
     setSettingsTab,
     setShowSettingsPopup,
     setShowReportModal,
-    setErrorToast
+    setErrorToast,
+    addCatalogService,
+    deleteCatalogService,
+    addCatalogProduct,
+    deleteCatalogProduct
   } = useFlowBarber();
 
   const [isEditingName, setIsEditingName] = useState(false);

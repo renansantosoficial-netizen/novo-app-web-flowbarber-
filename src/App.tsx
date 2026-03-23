@@ -75,18 +75,6 @@ import { getAIInsights, getMarketTrends } from './services/geminiService';
 import Cropper from 'react-easy-crop';
 import { useFlowBarber } from './context/FlowBarberContext';
 
-// --- Utils ---
-const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-const formatCurrency = (v: number) => 
-  new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v);
-
-const getLocalISO = (date: Date) => {
-  const offset = date.getTimezoneOffset();
-  const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
-  return adjustedDate.toISOString().split('T')[0];
-};
-
 // --- Components ---
 
 
@@ -136,7 +124,6 @@ export default function App() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");
-  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const clientSearchRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -273,30 +260,6 @@ export default function App() {
         />
       )}
 
-      {isServiceModalOpen && (
-        <ServiceModal
-          isOpen={isServiceModalOpen}
-          onClose={() => setIsServiceModalOpen(false)}
-          onSave={(newService) => {
-            const serviceWithId = { ...newService, id: generateId() };
-            setData(prev => ({
-              ...prev,
-              saldo: prev.saldo + serviceWithId.valor,
-              servicos: [...prev.servicos, serviceWithId],
-              historico: [{
-                id: generateId(),
-                data: selectedDate ? `${selectedDate}T12:00:00Z` : new Date().toISOString(),
-                tipo: 'entrada',
-                descricao: serviceWithId.nome,
-                valor: serviceWithId.valor,
-                categoria: 'servico'
-              }, ...prev.historico]
-            }));
-            setShowSuccessToast(true);
-            setTimeout(() => setShowSuccessToast(false), 2000);
-          }}
-        />
-      )}
       {/* Elementos Atmosféricos de Fundo */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-[-15%] left-[-10%] w-[50%] h-[50%] bg-emerald-500/10 blur-[140px] rounded-full animate-pulse" />
@@ -431,10 +394,6 @@ export default function App() {
         {showSettingsPopup && (
           <SettingsPopup 
             exportToCSV={exportToCSV}
-            addCatalogService={addCatalogService}
-            deleteCatalogService={deleteCatalogService}
-            addCatalogProduct={addCatalogProduct}
-            deleteCatalogProduct={deleteCatalogProduct}
             fileInputRef={fileInputRef}
           />
         )}
